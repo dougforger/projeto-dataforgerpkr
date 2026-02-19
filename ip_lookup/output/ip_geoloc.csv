@@ -1,0 +1,4 @@
+﻿ip_consultado,status,mensagem,pais,estado,cidade,cep,fuso_horario,provedor_internet,organizacao,sistema_autonomo,latitude,longitude,proxy,hospedagem
+152.237.53.254,success,,Brazil,Rio de Janeiro,Rio de Janeiro,24000,America/Sao_Paulo,V tal,Telemar Norte Leste S.A.,AS7738 V tal,-22.9201,-43.0811,False,False
+177.26.64.233,success,,Brazil,Rio de Janeiro,Rio de Janeiro,24000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-22.9201,-43.0811,False,False
+177.26.64.44,success,,Brazil,Rio de Janeiro,Rio de Janeiro,24000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-22.9201,-43.0811,False,False
