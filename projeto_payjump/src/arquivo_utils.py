@@ -49,6 +49,4 @@ def carregar_excel():
     else:
         df = pd.read_excel(caminho_corrigido, sheet_name="sheet1", engine='openpyxl')
 
-        # Seleciona apenas as colunas úteis
-        colunas_uteis = ['Player ID', 'Name', 'Club ID', 'Union ID', 'Rank', 'prize']
-        return df[colunas_uteis]
+    return df

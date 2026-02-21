@@ -1,0 +1,28 @@
+# Arquivos Excel (dados e testes)
+*.xlsx
+*.xls
+*_corrigido.xlsx
+
+# Ambientes virtuais
+.venv/
+venv/
+
+# Cache do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Outputs temporários (opcional, se quiser versionar remova essa linha)
+output/*
+!output/.gitkeep

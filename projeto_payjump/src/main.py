@@ -24,7 +24,9 @@ def main():
         return print('Não foi possível carregar o arquivo.')
     else:
         print("Arquivo carregado com sucesso! Processando os dados...")
-    
+    colunas_uteis = ['Player ID', 'Name', 'Club ID', 'Union ID', 'Rank', 'prize']
+    df = df[colunas_uteis]
+
     # 2. Adiciona o nome dos clubes
     df = adicionar_clube_name(df)
 
