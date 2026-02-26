@@ -1,32 +1,32 @@
-﻿id-liga,nome-liga
-106,Suprema
-107,Liga Principal
-111,Suprema EU
-127,Suprema Peru
-128,Suprema Union
-132,Suprema Ásia
-135,Supreme Poker
-136,Suprema México
-137,Suprema Argentina
-145,Suprema Panamá
-147,Suprema Colômbia
-148,Suprema Venezuela
-149,Suprema R Dominicana
-150,Suprema Bolívia
-163,Suprema Costa Rica
-164,Suprema KZ
-165,Re-Stars
-166,Suprema USA FN
-170,SRODEO
-171,Liga Royal
-173,Suprema SX USD
-174,Suprema Canadá
-180,♠️♥️ HOME GAME ♦️♣️
-184,Suprema Chile
-197,Suprema Freeroll
-199,Suprema ADR USD
-202,Suprema Índia
-204,Suprema Uruguai
-205,Suprema SX-E
-213,Vulcão
-214,CERRADO POKER LEAGUE
+﻿id-liga,nome-liga,idioma,handicap,moeda
+106,Suprema,português,5.0,BRL
+107,Liga Principal,português,5.0,BRL
+111,Suprema EU,inglês,0.8,USD
+127,Suprema Peru,espanhol,3.5.0,SOL
+128,Suprema Union,português,5.0,BRL
+132,Suprema Ásia,inglês,0.8,USD
+135,Supreme Poker,inglês,0.8,USD
+136,Suprema México,espanhol,20,MXN
+137,Suprema Argentina,espanhol,0.8,USD
+145,Suprema Panamá,inglês,0.8,USD
+147,Suprema Colômbia,espanhol,5.0,BRL
+148,Suprema Venezuela,espanhol,0.8,USD
+149,Suprema R Dominicana,inglês,0.8,USD
+150,Suprema Bolívia,espanhol,10,BOL
+163,Suprema Costa Rica,inglês,0.8,USD
+164,Suprema KZ,inglês,45.00,KZT
+165,Re-Stars,português,5.0,BRL
+166,Suprema USA FN,inglês,0.8,USD
+170,SRODEO,português,5.0,BRL
+171,Liga Royal,português,5.0,BRL
+173,Suprema SX USD,inglês,0.8,USD
+174,Suprema Canadá,inglês0.,USD
+180,♠️♥️ HOME GAME ♦️♣️,português,5.0,BRL
+184,Suprema Chile,espanhol,0.8,USD
+197,Suprema Freeroll,português,5.0,BRL
+199,Suprema ADR USD,inglês,0.8,USD
+202,Suprema Índia,inglês,90,INR
+204,Suprema Uruguai,espanhol,0.8,USD
+205,Suprema SX-E,inglês,0.7,USD
+213,Vulcão,português,5.0,BRL
+214,CERRADO POKER LEAGUE,português,5.0,BRL

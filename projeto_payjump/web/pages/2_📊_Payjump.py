@@ -9,6 +9,16 @@ st.set_page_config(
     layout='wide'
 )
 
+with st.sidebar:
+    st.markdown("### 🔒 Doug Forger PKR")
+    st.markdown("**Sistema de Segurança**")
+    st.markdown("---")
+    st.info("""
+    Desenvolvido para análise de dados
+    a fim de garantir a integridade em
+    plataformas de poker online.
+    """)
+    
 st.title('📊 Calculadora de Payjump')
 st.markdown('Cálculo automatizado de ressarcimentos em torneios de poker online')
 st.markdown('---')
