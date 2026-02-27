@@ -9,15 +9,26 @@ from pathlib import Path
 # -----------------------------------------------------
 # BIBLIOTECAS PARA GERAR O PDF DO RELATÓRIO
 # -----------------------------------------------------
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
+from reportlab.lib.enums import TA_JUSTIFY, TA_LEFT
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.pdfmetrics import registerFontFamily
+from reportlab.pdfbase.ttfonts import TTFont
+
+# -----------------------------------------------------
+# CAMINHOS DOS DIRETÓRIOS
+# -----------------------------------------------------
+FONT_DIR = Path('C:/Windows/Fonts')
+BASE_DIR = Path(__file__).resolve().parent.parent
+
 # -----------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA
 # -----------------------------------------------------
-
 st.set_page_config(
     page_title='Análises',
     page_icon='📈',
@@ -28,7 +39,49 @@ st.set_page_config(
 st.title('📈 Análises')
 st.markdown('---')
 
+# -----------------------------------------------------
+# PERSONALIZAÇÃO DO PDF
+# -----------------------------------------------------
+pdfmetrics.registerFont(TTFont('CalibriLight', FONT_DIR / 'calibril.ttf'))
+pdfmetrics.registerFont(TTFont('CalibriLight-Bold', FONT_DIR / 'calibrib.ttf'))
+pdfmetrics.registerFont(TTFont('CalibriLight-Italic', FONT_DIR / 'calibrili.ttf'))
+pdfmetrics.registerFont(TTFont('CalibriLight-BoldItalic', FONT_DIR / 'calibriz.ttf'))
+registerFontFamily('CalibriLight',
+                   normal='CalibriLight',
+                   bold='CalibriLight-Bold',
+                   italic='CalibriLight-Italic',
+                   boldItalic='CalibriLight-BoldItalic')
+
 styles = getSampleStyleSheet()
+largura_pagina = A4[0] - 4*cm
+altura_pagina = A4[1] - 3*cm
+tabela_2_colunas = [largura_pagina * 0.5, largura_pagina * 0.5]
+tabela_3_colunas = [largura_pagina * 0.3, largura_pagina * 0.3, largura_pagina * 0.4]
+tabela_5_colunas = [largura_pagina * 0.2, largura_pagina * 0.2, largura_pagina * 0.2, largura_pagina * 0.2, largura_pagina * 0.2]
+
+estilo_paragrafo = ParagraphStyle(
+    'paragrafo_custom',
+    parent=styles['Normal'],
+    alignment=TA_JUSTIFY,
+    spaceAfter=8,
+    spaceBefore=8,
+    firstLineIndent=20,
+    wordWrap='LTR',
+    fontName='CalibriLight'
+)
+
+estilo_tabela1 = TableStyle([
+    ('FONTNAME', (0, 0), (-1, 0), 'CalibriLight-BoldItalic'),
+    ('FONTNAME', (0, 1), (-1, -1), 'CalibriLight'),
+    ('BACKGROUND', (0, 0), (-1,0), colors.grey),
+    ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+    ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+    ('VALIGN', (0, 0), (-1, -1), 'TOP')
+])
+
+styles['Title'].alignment = TA_LEFT
+
+img = ImageReader(BASE_DIR / 'img' / 'LOGO PRETO.png')
 # -----------------------------------------------------
 # FUNÇÕES DE APOIO.
 # -----------------------------------------------------
@@ -94,7 +147,19 @@ def montar_tabela_comuns(df, mesas_comuns):
                       ])
     return dados
 
+def criar_marca_dagua(img):
+    def marca_dagua(canvas, doc):
+        canvas.saveState()
+        canvas.setFillAlpha(0.2)
+        # largura, altura = A4
+        canvas.drawImage(img, 0, 0, width=largura_pagina, height=altura_pagina, mask='auto', preserveAspectRatio=True)
+        canvas.restoreState()
+    return marca_dagua
+
 def gerar_pdf(protocolo, pares_cash, pares_mtt, df_cash, mesas_comuns_cash, df_mtt, mesas_comuns_mtt):
+    for style in styles.byName.values():
+        style.fontName = 'CalibriLight'
+
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4)
     # styles = getSampleStyleSheet()
@@ -104,12 +169,7 @@ def gerar_pdf(protocolo, pares_cash, pares_mtt, df_cash, mesas_comuns_cash, df_m
     story.append(Spacer(1, 12))
 
     # Estilo das tabelas
-    estilo_tabela1 = TableStyle([
-        ('BACKGROUND', (0, 0), (-1,0), colors.grey),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.black),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP')
-    ])
+
     # Cruzamento em Cash Game
     story.append(Paragraph('Cruzamento em Cash Games', styles['Heading1']))
     if not pares_cash.empty:
@@ -117,7 +177,7 @@ def gerar_pdf(protocolo, pares_cash, pares_mtt, df_cash, mesas_comuns_cash, df_m
         dados_resumo_cash = [['Jogador', 'Total de Mesas']]
         for _, row in resumo_cash.iterrows():
             dados_resumo_cash.append([row['Player Name'], row['Total de Mesas']])
-        tabela_resumo_cash = Table(dados_resumo_cash)
+        tabela_resumo_cash = Table(dados_resumo_cash, colWidths=tabela_2_colunas)
         tabela_resumo_cash.setStyle(estilo_tabela1)
         story.append(tabela_resumo_cash)
         story.append(Spacer(1, 12))
@@ -126,14 +186,14 @@ def gerar_pdf(protocolo, pares_cash, pares_mtt, df_cash, mesas_comuns_cash, df_m
         dados_cash = [['Jogador A', 'Jogador B', 'Mesas em Comum', '% do Jogador A', '% do Jogador B']]
         for _, row in pares_cash.iterrows():
             dados_cash.append([row['Jogador A'], row['Jogador B'], row['Mesas em Comum'], f'{row['% do Jogador A']:.2f}%', f'{row['% do Jogador B']:.2f}%'])
-        tabela_cash = Table(dados_cash)
+        tabela_cash = Table(dados_cash, colWidths=tabela_5_colunas)
         tabela_cash.setStyle(estilo_tabela1)
         story.append(tabela_cash)
         story.append(Spacer(1, 12))
         
         # Tabela de mesas comuns (mesa - jogadores - link)
         dados_mesa_cash = montar_tabela_comuns(df_cash, mesas_comuns_cash)
-        tabela_mesas_cash = Table(dados_mesa_cash)
+        tabela_mesas_cash = Table(dados_mesa_cash, colWidths=tabela_3_colunas)
         tabela_mesas_cash.setStyle(estilo_tabela1)
         story.append(tabela_mesas_cash)
     else:
@@ -142,15 +202,21 @@ def gerar_pdf(protocolo, pares_cash, pares_mtt, df_cash, mesas_comuns_cash, df_m
     story.append(Spacer(1, 12))
 
     # Cruzamento em Torneios
+    story.append(PageBreak())
     story.append(Paragraph('Cruzamento em Torneios', styles['Heading1']))
     if not pares_mtt.empty:
-        story.append(Paragraph('O cruzamento de torneios leva em consideração os torneios em comum onde as contas se registraram. Não necessariamente considera que as contas jogaram na mesma mesa. Para mais detalhes dos torneios comuns, comparar as contas na aba "Player Information > Cheating investigation > Search Same Data With Players" adicionando os ID\'s e buscando por "Game".', styles['Normal']))
+        story.append(Paragraph('''
+                               O cruzamento de torneios leva em consideração os torneios em comum onde as contas se registraram. 
+                               Não necessariamente considera que as contas jogaram na mesma mesa. Para mais detalhes dos torneios comuns, 
+                               comparar as contas na aba "Player Information > Cheating investigation > Search Same Data With Players" adicionando os ID\'s e buscando por "Game".
+                               ''',
+                               estilo_paragrafo))
         story.append(Spacer(1, 12))
         
         dados_resumo_mtt = [['Jogador', 'Total de Torneios']]
         for _, row in resumo_mtt.iterrows():
             dados_resumo_mtt.append([row['Player Name'], row['Total de Torneios']])
-        tabela_resumo_mtt = Table(dados_resumo_mtt)
+        tabela_resumo_mtt = Table(dados_resumo_mtt, colWidths=tabela_2_colunas)
         tabela_resumo_mtt.setStyle(estilo_tabela1)
         story.append(tabela_resumo_mtt)
         story.append(Spacer(1, 12))
@@ -158,13 +224,13 @@ def gerar_pdf(protocolo, pares_cash, pares_mtt, df_cash, mesas_comuns_cash, df_m
         dados_mtt = [['Jogador A', 'Jogador B', 'Torneios em Comum', '% do Jogador A', '% do Jogador B']]
         for _,row in pares_mtt.iterrows():
             dados_mtt.append([row['Jogador A'], row['Jogador B'], row['Torneios em Comum'], f'{row['% do Jogador A']:.2f}%', f'{row['% do Jogador B']:.2f}%'])
-        tabela_mtt = Table(dados_mtt)
+        tabela_mtt = Table(dados_mtt, colWidths=tabela_5_colunas)
         tabela_mtt.setStyle(estilo_tabela1)
         story.append(tabela_mtt)
         story.append(Spacer(1, 12))
-        
+
         dados_mesas_mtt = montar_tabela_comuns(df_mtt, mesas_comuns_mtt)
-        tabela_mesas_mtt = Table(dados_mesas_mtt)
+        tabela_mesas_mtt = Table(dados_mesas_mtt, colWidths=tabela_3_colunas)
         tabela_mesas_mtt.setStyle(estilo_tabela1)
         story.append(tabela_mesas_mtt)
     else:
@@ -172,7 +238,7 @@ def gerar_pdf(protocolo, pares_cash, pares_mtt, df_cash, mesas_comuns_cash, df_m
 
     story.append(Spacer(1, 12))
 
-    doc.build(story)
+    doc.build(story, onFirstPage=criar_marca_dagua(img), onLaterPages=criar_marca_dagua(img))
     buffer.seek(0)
     return buffer
 
