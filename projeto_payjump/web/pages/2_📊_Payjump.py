@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 from pathlib import Path
 import math
+import io
+import zipfile
+import shutil
 
 st.set_page_config(
     page_title = 'Calculadora de Payjump',
@@ -23,12 +26,50 @@ st.title('📊 Calculadora de Payjump')
 st.markdown('Cálculo automatizado de ressarcimentos em torneios de poker online')
 st.markdown('---')
 
+def corrigir_xlsx_memoria(arquivo):
+        bytes_original = arquivo.read()
+        buffer_corrigido = io.BytesIO()
+        
+        with zipfile.ZipFile(io.BytesIO(bytes_original), 'r') as z:
+            conteudos = {nome: z.read(nome) for nome in z.namelist()}
+        
+        if 'xl/styles.xml' in conteudos:
+            styles = conteudos['xl/styles.xml'].decode('utf-8')
+            styles = styles.replace('rgb="#', 'rgb="')
+            conteudos['xl/styles.xml'] = styles.encode('utf-8')
+        
+        with zipfile.ZipFile(buffer_corrigido, 'w', zipfile.ZIP_DEFLATED) as z:
+            for nome, conteudo in conteudos.items():
+                z.writestr(nome, conteudo)
+        
+        buffer_corrigido.seek(0)
+        return buffer_corrigido
+
+def carregar_dados_backend(arquivos):
+    if not isinstance(arquivos, list):
+        arquivos = [arquivos]
+    dfs = []
+
+    for arquivo in arquivos:
+        arquivo_corrigido = corrigir_xlsx_memoria(arquivo)
+        df_temp = pd.read_excel(arquivo_corrigido, engine='openpyxl')
+        dfs.append(df_temp)
+    return pd.concat(dfs, ignore_index=True)
+
 # Upload de arquivo
-uploaded_file = st.file_uploader(
-    'Faça o upload da planilha do torneio.',
-    type=['xlsx', 'xls'],
-    help='Selecione o arquivo Excel exportado do sistema. Esse arquivo deve começar com o nome "MTT Player List". Ele pode ser exportado da página "Game Information > MTT Player List" inserindo o GameID do evento desejado.'
-)
+col_upload, col_cache = st.columns([4,1])
+with col_upload:
+    uploaded_file = st.file_uploader(
+        'Faça o upload da planilha do torneio.',
+        type=['xlsx', 'xls'],
+        help='Selecione o arquivo Excel exportado do sistema. Esse arquivo deve começar com o nome "MTT Player List". Ele pode ser exportado da página "Game Information > MTT Player List" inserindo o GameID do evento desejado.'
+    )
+with col_cache:
+    st.space()
+    if st.button('🗑️ Limpar dados', key='backend-limpa-cache'):
+        df = None
+        st.cache_data.clear()
+        st.rerun()
 
 if uploaded_file is not None:
     # Valida a leitura do arquivo.
@@ -37,7 +78,7 @@ if uploaded_file is not None:
         st.stop()
     try:
         # Lê o arquivo.
-        df = pd.read_excel(uploaded_file, sheet_name='sheet1', engine='openpyxl')
+        df = carregar_dados_backend(uploaded_file)
 
         # st.write("Colunas encontradas:", df.columns.tolist())
 
@@ -46,7 +87,7 @@ if uploaded_file is not None:
 
         # Exibe uma prévia dos dados
         st.subheader('Prévia do Torneio (Exibindo os 10 primeiros jogadores):')
-        st.dataframe(df.head(10), width='stretch')
+        st.dataframe(df, width='stretch')
 
         # Seleciona as colunas úteis para o cálculo
         colunas_uteis = ['Player ID', 'Name', 'Club ID', 'Union ID', 'Rank', 'prize']

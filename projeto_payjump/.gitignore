@@ -26,3 +26,6 @@ Thumbs.db
 # Outputs temporários (opcional, se quiser versionar remova essa linha)
 output/*
 !output/.gitkeep
+
+# Arquivos testes
+projeto_payjump/web/data/player_detail_2026-02-25-1641.csv

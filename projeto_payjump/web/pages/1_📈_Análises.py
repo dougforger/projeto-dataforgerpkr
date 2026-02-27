@@ -6,7 +6,14 @@ import shutil
 import streamlit as st
 import pandas as pd
 from pathlib import Path
-
+# -----------------------------------------------------
+# BIBLIOTECAS PARA GERAR O PDF DO RELATÓRIO
+# -----------------------------------------------------
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+from reportlab.lib.units import cm
 # -----------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA
 # -----------------------------------------------------
@@ -21,17 +28,18 @@ st.set_page_config(
 st.title('📈 Análises')
 st.markdown('---')
 
-# -----------------------------------------------------
-# FUNÇÃO QUE GUARDA OS DADOS EM CACHE PARA O CSV
-# -----------------------------------------------------
-@st.cache_data
-def carregar_dados(arquivo):
-    return pd.read_csv(arquivo)
-
+styles = getSampleStyleSheet()
 # -----------------------------------------------------
 # FUNÇÕES DE APOIO.
 # -----------------------------------------------------
+
+# Função que guarda os dados em cache para o csv
+@st.cache_data
+def carregar_dados(arquivo):
+    return pd.read_csv(arquivo)
 @st.dialog('📄 Relatório', width='large')
+
+# Função para gerar relatório em markdown
 def gerar_relatorio(pares_cash, resumo_cash, pares_mtt, resumo_mtt, torneio_selecionado, resumo_mesa_mtt):
     relatorio = '### Cruzamento de Cash Game: \n'
 
@@ -40,8 +48,10 @@ def gerar_relatorio(pares_cash, resumo_cash, pares_mtt, resumo_mtt, torneio_sele
         for _, row in resumo_cash.iterrows():
             relatorio += f'| {row['Player Name']} | {row['Total de Mesas']} |\n'
         relatorio += '\n'
+        relatorio += '| Jogador A | Jogador B | Mesas em Comum | % Jogador A | % Jogador B |\n'
+        relatorio += '|-----------|-----------|----------------|-------------|-------------|\n'
         for _, row in pares_cash.iterrows():
-            relatorio += f'A conta {row['Jogador A']} cruzou em {row['Mesas em Comum']} mesas com a conta {row['Jogador B']}, representando {row['% do Jogador A']}% do total de mesas de "{row["Jogador A"]}" e {row['% do Jogador B']}% do total de mesas de "{row["Jogador B"]}".\n'
+            relatorio += f"| {row['Jogador A']} | {row['Jogador B']} | {row['Mesas em Comum']} | {row['% do Jogador A']}% | {row['% do Jogador B']}% |\n"
     else:
         relatorio += 'Sem registros em mesas de cash game.\n'
 
@@ -51,8 +61,10 @@ def gerar_relatorio(pares_cash, resumo_cash, pares_mtt, resumo_mtt, torneio_sele
         for _, row in resumo_mtt.iterrows():
             relatorio += f'| {row['Player Name']} | {row['Total de Torneios']} |\n'
         relatorio += '\n'
+        relatorio += '| Jogador A | Jogador B | Torneios em Comum | % Jogador A | % Jogador B |\n'
+        relatorio += '|-----------|-----------|-------------------|-------------|-------------|\n'
         for _, row in pares_mtt.iterrows():
-            relatorio += f'A conta "{row["Jogador A"]}" cruzou em {row["Torneios em Comum"]} torneios com a conta "{row["Jogador B"]}", representando {row["% do Jogador A"]}% do total de torneios de "{row["Jogador A"]}" e {row["% do Jogador B"]}% do total de torneios de "{row["Jogador B"]}".\n'
+            relatorio += f"| {row['Jogador A']} | {row['Jogador B']} | {row['Torneios em Comum']} | {row['% do Jogador A']}% | {row['% do Jogador B']}% |\n"
         relatorio += f'\n#### Detalhamento do Game ID: {torneio_selecionado}\n'
         relatorio += '| Player Name | Club Name | Prize | KOs | Total |\n'
         relatorio += '|-------------|-----------|-------|-----|-------|\n'
@@ -68,6 +80,101 @@ def gerar_relatorio(pares_cash, resumo_cash, pares_mtt, resumo_mtt, torneio_sele
         relatorio += '\n---\n### Observações:\n'
         relatorio_final = relatorio + obesrvacoes
         st.code(relatorio_final, language='text')
+
+def montar_tabela_comuns(df, mesas_comuns):
+    dados = [['ID Mesa', 'Jogadores', 'Link']]
+    for mesa in sorted(mesas_comuns, reverse=True):
+        df_mesa = df[df['Game ID'] == mesa]
+        ids_jogadores = df_mesa['Player ID'].unique().tolist()
+        player_ids_url = '&'.join([str(id) for id in ids_jogadores])
+        link = f'https://console.supremapoker.net/game/GameDetail?backupOnly=0&dateFilter=16&matchID={mesa}&page=1&pageSize=100&playerIDs={player_ids_url}'
+        dados.append([Paragraph(str(mesa), styles['Normal']),
+                      Paragraph(', '.join([str(id) for id in ids_jogadores]), styles['Normal']),
+                      Paragraph(f'<a href="{link}" color="blue"><u>Link para o Hand History</u></a>', styles['Normal'])
+                      ])
+    return dados
+
+def gerar_pdf(protocolo, pares_cash, pares_mtt, df_cash, mesas_comuns_cash, df_mtt, mesas_comuns_mtt):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    # styles = getSampleStyleSheet()
+    story = []
+    # Título
+    story.append(Paragraph(f'Protocolo #{protocolo}', styles['Title']))
+    story.append(Spacer(1, 12))
+
+    # Estilo das tabelas
+    estilo_tabela1 = TableStyle([
+        ('BACKGROUND', (0, 0), (-1,0), colors.grey),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP')
+    ])
+    # Cruzamento em Cash Game
+    story.append(Paragraph('Cruzamento em Cash Games', styles['Heading1']))
+    if not pares_cash.empty:
+        # Tabela do resumo (jogador, total de mesas)
+        dados_resumo_cash = [['Jogador', 'Total de Mesas']]
+        for _, row in resumo_cash.iterrows():
+            dados_resumo_cash.append([row['Player Name'], row['Total de Mesas']])
+        tabela_resumo_cash = Table(dados_resumo_cash)
+        tabela_resumo_cash.setStyle(estilo_tabela1)
+        story.append(tabela_resumo_cash)
+        story.append(Spacer(1, 12))
+        
+        # Tabela de pares (jogador a - jogador b - mesas comum - % de a - % de b)
+        dados_cash = [['Jogador A', 'Jogador B', 'Mesas em Comum', '% do Jogador A', '% do Jogador B']]
+        for _, row in pares_cash.iterrows():
+            dados_cash.append([row['Jogador A'], row['Jogador B'], row['Mesas em Comum'], f'{row['% do Jogador A']:.2f}%', f'{row['% do Jogador B']:.2f}%'])
+        tabela_cash = Table(dados_cash)
+        tabela_cash.setStyle(estilo_tabela1)
+        story.append(tabela_cash)
+        story.append(Spacer(1, 12))
+        
+        # Tabela de mesas comuns (mesa - jogadores - link)
+        dados_mesa_cash = montar_tabela_comuns(df_cash, mesas_comuns_cash)
+        tabela_mesas_cash = Table(dados_mesa_cash)
+        tabela_mesas_cash.setStyle(estilo_tabela1)
+        story.append(tabela_mesas_cash)
+    else:
+        story.append(Paragraph('Sem registro de cash game', styles['Normal']))
+    
+    story.append(Spacer(1, 12))
+
+    # Cruzamento em Torneios
+    story.append(Paragraph('Cruzamento em Torneios', styles['Heading1']))
+    if not pares_mtt.empty:
+        story.append(Paragraph('O cruzamento de torneios leva em consideração os torneios em comum onde as contas se registraram. Não necessariamente considera que as contas jogaram na mesma mesa. Para mais detalhes dos torneios comuns, comparar as contas na aba "Player Information > Cheating investigation > Search Same Data With Players" adicionando os ID\'s e buscando por "Game".', styles['Normal']))
+        story.append(Spacer(1, 12))
+        
+        dados_resumo_mtt = [['Jogador', 'Total de Torneios']]
+        for _, row in resumo_mtt.iterrows():
+            dados_resumo_mtt.append([row['Player Name'], row['Total de Torneios']])
+        tabela_resumo_mtt = Table(dados_resumo_mtt)
+        tabela_resumo_mtt.setStyle(estilo_tabela1)
+        story.append(tabela_resumo_mtt)
+        story.append(Spacer(1, 12))
+        
+        dados_mtt = [['Jogador A', 'Jogador B', 'Torneios em Comum', '% do Jogador A', '% do Jogador B']]
+        for _,row in pares_mtt.iterrows():
+            dados_mtt.append([row['Jogador A'], row['Jogador B'], row['Torneios em Comum'], f'{row['% do Jogador A']:.2f}%', f'{row['% do Jogador B']:.2f}%'])
+        tabela_mtt = Table(dados_mtt)
+        tabela_mtt.setStyle(estilo_tabela1)
+        story.append(tabela_mtt)
+        story.append(Spacer(1, 12))
+        
+        dados_mesas_mtt = montar_tabela_comuns(df_mtt, mesas_comuns_mtt)
+        tabela_mesas_mtt = Table(dados_mesas_mtt)
+        tabela_mesas_mtt.setStyle(estilo_tabela1)
+        story.append(tabela_mesas_mtt)
+    else:
+        story.append(Paragraph('Sem registros de torneios.', styles['Normal']))
+
+    story.append(Spacer(1, 12))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
 
 def corrigir_xlsx_memoria(arquivo):
         bytes_original = arquivo.read()
@@ -132,8 +239,15 @@ with aba_backend:
         # st.dataframe(st.session_state.df_backend.head())
     
     if st.session_state.df_backend is None:
+        # Definição dos DataFrames vazios.
+        df_cash = pd.DataFrame()
+        df_pares_cash = pd.DataFrame()
+        resumo_cash = pd.DataFrame()
+        mesas_comuns_cash = pd.DataFrame()
+        df_pares_mtt = pd.DataFrame()
+        resumo_mtt = pd.DataFrame()
         st.empty()
-        # st.info('📂 Faça o upload dos arquivos para começar.')
+        
     else:
         col_cash, col_mtt = st.columns(2)
         with col_cash:
@@ -142,8 +256,6 @@ with aba_backend:
             df_cash = st.session_state.df_backend[st.session_state.df_backend['Event'] == 'gameResult'].copy()
             st.info(f'🎯 {len(df_cash)} mãos em cash game encontradas.')
 
-            df_pares_cash = pd.DataFrame()
-            resumo_cash = pd.DataFrame()
             if not df_cash.empty:
                 st.dataframe(df_cash.head())
 
@@ -205,8 +317,6 @@ with aba_backend:
             df_mtt = st.session_state.df_backend[st.session_state.df_backend['Event'] == ('MttPrize')].copy()
             st.info(f'🏆 {len(df_mtt)} torneios finalizados.')
 
-            df_pares_mtt = pd.DataFrame()
-            resumo_mtt = pd.DataFrame()
             if not df_mtt.empty:
                 # st.dataframe(df_mtt.head())
 
@@ -268,10 +378,21 @@ with aba_backend:
                             })  
                 st.dataframe(df_mesa_mtt, hide_index=True, width='stretch')
     
+    protocolo = '1305308689'
+    if df_pares_cash is not None:
+        pdf = gerar_pdf(protocolo, df_pares_cash, df_pares_mtt, df_cash, total_mesas_comuns_cash, df_mtt, mesas_comuns_mtt)
+        
     _, col_centro, _ = st.columns([2,1,2])
     with col_centro:
         if st.button('📄 Gerar Relatório'):
             gerar_relatorio(df_pares_cash, resumo_cash, df_pares_mtt, resumo_mtt, mesas_selecionada_mtt, df_mesa_mtt_resumo)
+
+        st.download_button(
+            label='📄 Baixar Relatório em PDF',
+            data=pdf,
+            file_name=f'#{protocolo}.pdf',
+            mime='application/pdf'
+        )
 
 with aba_snowflake: 
     # -----------------------------------------------------

@@ -1,4 +1,5 @@
 ﻿ip_consultado,status,mensagem,pais,estado,cidade,cep,fuso_horario,provedor_internet,organizacao,sistema_autonomo,latitude,longitude,proxy,hospedagem
-152.237.53.254,success,,Brazil,Rio de Janeiro,Rio de Janeiro,24000,America/Sao_Paulo,V tal,Telemar Norte Leste S.A.,AS7738 V tal,-22.9201,-43.0811,False,False
-177.26.64.233,success,,Brazil,Rio de Janeiro,Rio de Janeiro,24000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-22.9201,-43.0811,False,False
-177.26.64.44,success,,Brazil,Rio de Janeiro,Rio de Janeiro,24000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-22.9201,-43.0811,False,False
+149.19.165.121,success,,Brazil,São Paulo,Sao Paulo,,America/Sao_Paulo,Starlink Chile SPA,Starlink Brazil Serviços de Internet Ltd,AS14593 Space Exploration Technologies Corporation,-23.5505,-46.6333,False,False
+177.132.149.85,success,,Brazil,Paraná,Toledo,85900,America/Sao_Paulo,TELEFÔNICA BRASIL S.A,Global Village Telecom,AS18881 TELEFÔNICA BRASIL S.A,-24.7337,-53.8202,False,False
+177.156.17.126,success,,Brazil,Paraná,Toledo,85900,America/Sao_Paulo,TELEFÔNICA BRASIL S.A,Global Village Telecom,AS18881 TELEFÔNICA BRASIL S.A,-24.7337,-53.8202,False,False
+128.201.1.34,success,,Brazil,Minas Gerais,Ipatinga,35160,America/Sao_Paulo,Vero S.A,Vero S.A,AS263405 VERO S.A,-19.4386,-42.606,False,False
