@@ -150,13 +150,15 @@ def montar_tabela_comuns(df, mesas_comuns):
 def criar_marca_dagua(img):
     def marca_dagua(canvas, doc):
         canvas.saveState()
-        canvas.setFillAlpha(0.2)
-        # largura, altura = A4
-        canvas.drawImage(img, 0, 0, width=largura_pagina, height=altura_pagina, mask='auto', preserveAspectRatio=True)
+        canvas.setFillAlpha(0.1)
+        pag_largura, pag_altura = A4
+        x = (pag_largura - largura_pagina) / 2
+        y = (pag_altura - altura_pagina) / 2
+        canvas.drawImage(img, x, y, width=largura_pagina, height=altura_pagina, mask='auto', preserveAspectRatio=True)
         canvas.restoreState()
     return marca_dagua
 
-def gerar_pdf(protocolo, pares_cash, pares_mtt, df_cash, mesas_comuns_cash, df_mtt, mesas_comuns_mtt):
+def gerar_pdf(protocolo, pares_cash, pares_mtt, df_cash, df_mtt, mesas_comuns_cash, mesas_comuns_mtt):
     for style in styles.byName.values():
         style.fontName = 'CalibriLight'
 
@@ -174,10 +176,10 @@ def gerar_pdf(protocolo, pares_cash, pares_mtt, df_cash, mesas_comuns_cash, df_m
     story.append(Paragraph('Cruzamento em Cash Games', styles['Heading1']))
     if not pares_cash.empty:
         # Tabela do resumo (jogador, total de mesas)
-        dados_resumo_cash = [['Jogador', 'Total de Mesas']]
+        dados_resumo_cash = [['Jogador', 'Clube', 'Total de Mesas']]
         for _, row in resumo_cash.iterrows():
-            dados_resumo_cash.append([row['Player Name'], row['Total de Mesas']])
-        tabela_resumo_cash = Table(dados_resumo_cash, colWidths=tabela_2_colunas)
+            dados_resumo_cash.append([row['Player Name'], row['Club Name'], row['Total de Mesas']])
+        tabela_resumo_cash = Table(dados_resumo_cash, colWidths=tabela_3_colunas)
         tabela_resumo_cash.setStyle(estilo_tabela1)
         story.append(tabela_resumo_cash)
         story.append(Spacer(1, 12))
@@ -213,10 +215,10 @@ def gerar_pdf(protocolo, pares_cash, pares_mtt, df_cash, mesas_comuns_cash, df_m
                                estilo_paragrafo))
         story.append(Spacer(1, 12))
         
-        dados_resumo_mtt = [['Jogador', 'Total de Torneios']]
+        dados_resumo_mtt = [['Jogador', 'Clube', 'Total de Torneios']]
         for _, row in resumo_mtt.iterrows():
-            dados_resumo_mtt.append([row['Player Name'], row['Total de Torneios']])
-        tabela_resumo_mtt = Table(dados_resumo_mtt, colWidths=tabela_2_colunas)
+            dados_resumo_mtt.append([row['Player Name'], row['Club Name'], row['Total de Torneios']])
+        tabela_resumo_mtt = Table(dados_resumo_mtt, colWidths=tabela_3_colunas)
         tabela_resumo_mtt.setStyle(estilo_tabela1)
         story.append(tabela_resumo_mtt)
         story.append(Spacer(1, 12))
@@ -304,14 +306,19 @@ with aba_backend:
         st.success(f'✅ {len(upload_files)} arquivo(s) carregado(s)! {len(st.session_state.df_backend)} linhas encontradas')
         # st.dataframe(st.session_state.df_backend.head())
     
+    # Definição dos DataFrames vazios.
+    df_cash = pd.DataFrame()
+    df_pares_cash = pd.DataFrame()
+    resumo_cash = pd.DataFrame()
+    mesas_comuns_cash = pd.DataFrame()
+    total_mesas_comuns_cash = set()
+    df_mtt =pd.DataFrame()
+    df_pares_mtt = pd.DataFrame()
+    resumo_mtt = pd.DataFrame()
+    total_mesas_comuns_mtt = pd.DataFrame()
+    mesas_comuns_mtt = pd.DataFrame()
+
     if st.session_state.df_backend is None:
-        # Definição dos DataFrames vazios.
-        df_cash = pd.DataFrame()
-        df_pares_cash = pd.DataFrame()
-        resumo_cash = pd.DataFrame()
-        mesas_comuns_cash = pd.DataFrame()
-        df_pares_mtt = pd.DataFrame()
-        resumo_mtt = pd.DataFrame()
         st.empty()
         
     else:
@@ -329,22 +336,25 @@ with aba_backend:
                 resumo_cash.columns = ['Player ID', 'Player Name', 'Club Name', 'Total de Mesas']
                 st.dataframe(resumo_cash, hide_index=True, width='stretch')
                 
-                mesas_por_jogador_cash = df_cash.groupby('Player ID')['Game ID'].apply(set)
-
-                jogadores_cash = resumo_cash['Player ID'].tolist()
+                mesas_por_jogador_cash = df_cash.groupby('Player ID')['Game ID'].nunique().reset_index()
+                mesas_por_jogador_cash.columns = ['Player ID', 'Total de Mesas']
+                # print(mesas_por_jogador_cash)
+                maos_por_jogador_cash = df_cash.groupby('Player ID')['Hand ID'].apply(set)
+                jogadores_cash = resumo_cash['Player ID'].unique().tolist()
+                # print(jogadores_cash)
                 pares_cash = []
-
-                total_mesas_comuns_cash = set()
 
                 for i in range(len(jogadores_cash)):
                     for j in range(i + 1, len(jogadores_cash)):
                         a = jogadores_cash[i]
                         b = jogadores_cash[j]
-                        mesas_comuns_cash = mesas_por_jogador_cash[a] & mesas_por_jogador_cash[b]
-                        total_mesas_comuns_cash |= mesas_comuns_cash
-                        total_comuns = len(mesas_comuns_cash)
-                        total_a = resumo_cash.loc[resumo_cash['Player ID'] == a, 'Total de Mesas'].values[0]
-                        total_b = resumo_cash.loc[resumo_cash['Player ID'] == b, 'Total de Mesas'].values[0]
+                        maos_comuns_cash = maos_por_jogador_cash[a] & maos_por_jogador_cash[b]
+                        mesas_comuns_cash = df_cash[df_cash['Hand ID'].isin(maos_comuns_cash)]['Game ID'].unique()
+                        total_mesas_comuns_cash |= set(mesas_comuns_cash)
+                        # total_mesas_comuns_cash |= mesas_comuns_cash
+                        total_comuns = len(total_mesas_comuns_cash)
+                        total_a = mesas_por_jogador_cash.loc[mesas_por_jogador_cash['Player ID'] == a, 'Total de Mesas'].values[0]
+                        total_b = mesas_por_jogador_cash.loc[mesas_por_jogador_cash['Player ID'] == b, 'Total de Mesas'].values[0]
                         pares_cash.append({
                             'Jogador A': df_cash.loc[df_cash['Player ID'] == a, 'Player Name'].values[0],
                             'Jogador B': df_cash.loc[df_cash['Player ID'] == b, 'Player Name'].values[0],
@@ -373,8 +383,8 @@ with aba_backend:
                                 hide_index=True,
                                 width='stretch',
                                 column_config={
-                                    'Ganhos': st.column_config.NumberColumn(format='localizes'),
-                                    'Rake': st.column_config.NumberColumn(format='localizes')
+                                    'Ganhos': st.column_config.NumberColumn(format='localized'),
+                                    'Rake': st.column_config.NumberColumn(format='localized')
                                 })
                     st.dataframe(df_mesa_cash, hide_index=True, width='stretch')
         
@@ -386,67 +396,69 @@ with aba_backend:
             if not df_mtt.empty:
                 # st.dataframe(df_mtt.head())
 
-                resumo_mtt = df_mtt.groupby(['Player Name', 'Club Name'])['Game ID'].nunique().reset_index()
-                resumo_mtt.columns = ['Player Name', 'Club Name', 'Total de Torneios']
+                resumo_mtt = df_mtt.groupby(['Player ID', 'Player Name', 'Club Name'])['Game ID'].nunique().reset_index()
+                resumo_mtt.columns = ['Player ID', 'Player Name', 'Club Name', 'Total de Torneios']
 
                 st.dataframe(resumo_mtt, hide_index=True, width='stretch')
                 mesas_por_jogador_mtt = df_mtt.groupby('Player Name')['Game ID'].apply(set)
 
-                jogadores_mtt = resumo_mtt['Player Name'].tolist()
+                jogadores_mtt = resumo_mtt['Player Name'].unique().tolist()
+                # print(jogadores_mtt)
                 pares_mtt = []
-                total_mesas_comuns_mtt = set()
-                mesas_comuns_mtt = set()
-                
-                for i in range(len(jogadores_mtt)):
-                    for j in range(i + 1, len(jogadores_mtt)):
-                        a = jogadores_mtt[i]
-                        b = jogadores_mtt[j]
-                        mesas_comuns_mtt = mesas_por_jogador_mtt[a] & mesas_por_jogador_mtt[b]
-                        total_mesas_comuns_mtt |= mesas_comuns_mtt
-                        total_comuns = len(total_mesas_comuns_mtt)
-                        total_a = resumo_mtt.loc[resumo_mtt['Player Name'] == a, 'Total de Torneios'].values[0]
-                        total_b = resumo_mtt.loc[resumo_mtt['Player Name'] == b, 'Total de Torneios'].values[0]
-                        pares_mtt.append({
-                            'Jogador A': df_mtt.loc[df_mtt['Player Name'] == a, 'Player Name'].values[0],
-                            'Jogador B': df_mtt.loc[df_mtt['Player Name'] == b, 'Player Name'].values[0],
-                            'Torneios em Comum': total_comuns,
-                            '% do Jogador A': round(total_comuns / total_a * 100, 1),
-                            '% do Jogador B': round(total_comuns / total_b * 100, 1)
-                        })
 
-                df_pares_mtt = pd.DataFrame(pares_mtt)
-                st.dataframe(df_pares_mtt, hide_index=True, width='stretch')
+                if len(jogadores_mtt) > 1:    
+                    for i in range(len(jogadores_mtt)):
+                        for j in range(i + 1, len(jogadores_mtt)):
+                            a = jogadores_mtt[i]
+                            b = jogadores_mtt[j]
+                            total_mesas_comuns_mtt = mesas_por_jogador_mtt[a] & mesas_por_jogador_mtt[b]
+                            # total_mesas_comuns_mtt |= mesas_comuns_mtt
+                            total_comuns = len(total_mesas_comuns_mtt)
+                            total_a = resumo_mtt.loc[resumo_mtt['Player Name'] == a, 'Total de Torneios'].values[0]
+                            total_b = resumo_mtt.loc[resumo_mtt['Player Name'] == b, 'Total de Torneios'].values[0]
+                            pares_mtt.append({
+                                'Jogador A': df_mtt.loc[df_mtt['Player Name'] == a, 'Player Name'].values[0],
+                                'Jogador B': df_mtt.loc[df_mtt['Player Name'] == b, 'Player Name'].values[0],
+                                'Torneios em Comum': total_comuns,
+                                '% do Jogador A': round(total_comuns / total_a * 100, 1),
+                                '% do Jogador B': round(total_comuns / total_b * 100, 1)
+                            })
 
-                if len(total_mesas_comuns_mtt) > 0:
-                    st.markdown('---')
-                    st.subheader('Detalhamento por Torneio')
+                    df_pares_mtt = pd.DataFrame(pares_mtt)
+                    st.dataframe(df_pares_mtt, hide_index=True, width='stretch')
 
-                mesas_ordenadas_mtt = sorted(mesas_comuns_mtt, reverse=True)
-                mesas_selecionada_mtt = st.selectbox('Selecione um Torneio', mesas_ordenadas_mtt)
-                df_mesa_mtt = st.session_state.df_backend[
-                    (st.session_state.df_backend['Game ID'] == mesas_selecionada_mtt) &
-                    (st.session_state.df_backend['Event'].isin(['MttPrize', 'MttKOPrize']))
-                ].copy()
-                df_mesa_mtt = df_mesa_mtt.sort_values('Game ID')
-                
-                df_mtt_prize = df_mesa_mtt[df_mesa_mtt['Event'] == 'MttPrize'].groupby(['Player Name', 'Club Name'])['chip change'].sum().reset_index().rename(columns={'chip change': 'Prize'})
-                df_mtt_koprize = df_mesa_mtt[df_mesa_mtt['Event'] == 'MttKOPrize'].groupby(['Player Name', 'Club Name'])['chip change'].sum().reset_index().rename(columns={'chip change': 'KO\'s'})
-                df_mesa_mtt_resumo = df_mtt_prize.merge(df_mtt_koprize, on=['Player Name', 'Club Name'], how='left').fillna(0)
-                df_mesa_mtt_resumo['Total'] = df_mesa_mtt_resumo['Prize'] + df_mesa_mtt_resumo['KO\'s']
+                    if len(total_mesas_comuns_mtt) > 0:
+                        st.markdown('---')
+                        st.subheader('Detalhamento por Torneio')
 
-                st.dataframe(df_mesa_mtt_resumo, 
-                            hide_index=True,
-                            width='stretch',
-                            column_config={
-                                'Prize': st.column_config.NumberColumn(format='localized'),
-                                'KO\'s': st.column_config.NumberColumn(format='localized'),
-                                'Total': st.column_config.NumberColumn(format='localized')
-                            })  
-                st.dataframe(df_mesa_mtt, hide_index=True, width='stretch')
-    
+                    mesas_ordenadas_mtt = sorted(total_mesas_comuns_mtt, reverse=True)
+                    mesas_selecionada_mtt = st.selectbox('Selecione um Torneio', mesas_ordenadas_mtt)
+                    df_mesa_mtt = st.session_state.df_backend[
+                        (st.session_state.df_backend['Game ID'] == mesas_selecionada_mtt) &
+                        (st.session_state.df_backend['Event'].isin(['MttPrize', 'MttKOPrize']))
+                    ].copy()
+                    df_mesa_mtt = df_mesa_mtt.sort_values('Game ID')
+                    
+                    df_mtt_prize = df_mesa_mtt[df_mesa_mtt['Event'] == 'MttPrize'].groupby(['Player ID', 'Player Name', 'Club Name'])['chip change'].sum().reset_index().rename(columns={'chip change': 'Prize'})
+                    df_mtt_koprize = df_mesa_mtt[df_mesa_mtt['Event'] == 'MttKOPrize'].groupby(['Player ID', 'Player Name', 'Club Name'])['chip change'].sum().reset_index().rename(columns={'chip change': 'KO\'s'})
+                    df_mesa_mtt_resumo = df_mtt_prize.merge(df_mtt_koprize, on=['Player Name', 'Club Name'], how='left').fillna(0)
+                    df_mesa_mtt_resumo['Total'] = df_mesa_mtt_resumo['Prize'] + df_mesa_mtt_resumo['KO\'s']
+
+                    st.dataframe(df_mesa_mtt_resumo, 
+                                hide_index=True,
+                                width='stretch',
+                                column_config={
+                                    'Prize': st.column_config.NumberColumn(format='localized'),
+                                    'KO\'s': st.column_config.NumberColumn(format='localized'),
+                                    'Total': st.column_config.NumberColumn(format='localized')
+                                })  
+                    st.dataframe(df_mesa_mtt, hide_index=True, width='stretch')
+                else:
+                    st.info(f'Somente a conta {jogadores_mtt[0]} possui registro em torneios.')
+
     protocolo = '1305308689'
     if df_pares_cash is not None:
-        pdf = gerar_pdf(protocolo, df_pares_cash, df_pares_mtt, df_cash, total_mesas_comuns_cash, df_mtt, mesas_comuns_mtt)
+        pdf = gerar_pdf(protocolo, df_pares_cash, df_pares_mtt, df_cash, df_mtt, total_mesas_comuns_cash, total_mesas_comuns_mtt)
         
     _, col_centro, _ = st.columns([2,1,2])
     with col_centro:
