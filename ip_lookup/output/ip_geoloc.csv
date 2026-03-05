@@ -1,5 +1,46 @@
 ﻿ip_consultado,status,mensagem,pais,estado,cidade,cep,fuso_horario,provedor_internet,organizacao,sistema_autonomo,latitude,longitude,proxy,hospedagem
-149.19.165.121,success,,Brazil,São Paulo,Sao Paulo,,America/Sao_Paulo,Starlink Chile SPA,Starlink Brazil Serviços de Internet Ltd,AS14593 Space Exploration Technologies Corporation,-23.5505,-46.6333,False,False
-177.132.149.85,success,,Brazil,Paraná,Toledo,85900,America/Sao_Paulo,TELEFÔNICA BRASIL S.A,Global Village Telecom,AS18881 TELEFÔNICA BRASIL S.A,-24.7337,-53.8202,False,False
-177.156.17.126,success,,Brazil,Paraná,Toledo,85900,America/Sao_Paulo,TELEFÔNICA BRASIL S.A,Global Village Telecom,AS18881 TELEFÔNICA BRASIL S.A,-24.7337,-53.8202,False,False
-128.201.1.34,success,,Brazil,Minas Gerais,Ipatinga,35160,America/Sao_Paulo,Vero S.A,Vero S.A,AS263405 VERO S.A,-19.4386,-42.606,False,False
+148.222.206.228,success,,Brazil,São Paulo,Sao Paulo,,America/Sao_Paulo,Starlink Chile SPA,Starlink Brazil Serviços de Internet Ltd,AS14593 Space Exploration Technologies Corporation,-23.5505,-46.6333,False,False
+177.174.192.205,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.192.252,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.193.27,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.193.64,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.194.103,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.194.252,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.195.5,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.195.72,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.196.235,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.197.108,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.197.45,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.198.189,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.198.195,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.198.93,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.199.1,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.199.139,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.199.37,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.200.192,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.200.245,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.200.80,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.201.237,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.201.84,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.202.167,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.202.187,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.202.189,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.202.72,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.203.109,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.204.187,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.204.196,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.205.105,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.205.61,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.206.141,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.206.175,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.206.50,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.206.51,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.207.104,success,,Brazil,Rio Grande do Sul,Porto Alegre,90000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-30.1188,-51.168,False,False
+177.174.244.119,success,,Brazil,Santa Catarina,Balneário Camboriú,88330,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-26.9981,-48.6187,False,False
+179.124.182.128,success,,Brazil,Rio Grande do Sul,Santa Cruz do Sul,96800,America/Sao_Paulo,Roberto Keller - ME,Roberto Keller - ME,AS61914 Roberto Keller - ME,-29.6153,-52.411,False,False
+179.124.182.188,success,,Brazil,Rio Grande do Sul,Santa Cruz do Sul,96800,America/Sao_Paulo,Roberto Keller - ME,Roberto Keller - ME,AS61914 Roberto Keller - ME,-29.6153,-52.411,False,False
+179.124.183.160,success,,Brazil,Rio Grande do Sul,Santa Cruz do Sul,96800,America/Sao_Paulo,Roberto Keller - ME,Traudi Ines Sehnem,AS61914 Roberto Keller - ME,-29.6153,-52.411,False,False
+179.151.164.96,success,,Brazil,Rio de Janeiro,Nilópolis,28000-000,America/Sao_Paulo,Vivo,TELEF�NICA BRASIL S.A,AS26599 TELEFÔNICA BRASIL S.A,-22.8075,-43.4139,False,False
+187.45.101.159,success,,Brazil,Rio Grande do Sul,Santa Cruz do Sul,,America/Sao_Paulo,Mhnet Telecom,Mhnet Telecom,AS28146 MHNET TELECOM,-29.7175,-52.4258,False,False
+187.66.39.84,success,,Brazil,Rio Grande do Sul,Santa Cruz do Sul,96810,America/Sao_Paulo,Claro NXT Telecomunicacoes Ltda,NET Serviços de Comunicação S.A.,AS28573 Claro NXT Telecomunicacoes Ltda,-29.718,-52.4266,False,False
+45.175.25.36,success,,Brazil,Rio Grande do Sul,Santa Cruz do Sul,96840,America/Sao_Paulo,RASÃO SYGANET TELECOMUNICAÇÕES LTDA,RASÃO SYGANET TELECOMUNICAÇÕES LTDA,AS268879 RASÃO SYGANET TELECOMUNICAÇÕES LTDA,-29.718,-52.4266,False,False

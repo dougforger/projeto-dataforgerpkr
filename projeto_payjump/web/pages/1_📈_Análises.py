@@ -97,9 +97,9 @@ def gerar_relatorio(pares_cash, resumo_cash, pares_mtt, resumo_mtt, torneio_sele
     relatorio = '### Cruzamento de Cash Game: \n'
 
     if not pares_cash.empty:
-        relatorio += '| Jogador | Total de Mesas |\n|---------|---------------|\n'
+        relatorio += '| Jogador | Total de Mesas | Clube | Ganhos (R$) | Rake (R$) |\n|---------|---------------|---------|---------|---------|\n'
         for _, row in resumo_cash.iterrows():
-            relatorio += f'| {row['Player Name']} | {row['Total de Mesas']} |\n'
+            relatorio += f'| {row['Player Name']} | {row['Club Name']} | {row['Total de Mesas']} | {row['Ganhos (R$)']:.2f} | {row['Rake (R$)']:.2f} |\n'
         relatorio += '\n'
         relatorio += '| Jogador A | Jogador B | Mesas em Comum | % Jogador A | % Jogador B |\n'
         relatorio += '|-----------|-----------|----------------|-------------|-------------|\n'
@@ -110,9 +110,9 @@ def gerar_relatorio(pares_cash, resumo_cash, pares_mtt, resumo_mtt, torneio_sele
 
     relatorio += '\n---\n### Cruzamento de Torneios:\n'
     if not pares_mtt.empty:
-        relatorio += '| Jogador | Total de Torneios |\n|---------|---------------|\n'
+        relatorio += '| Jogador | Total de Torneios | Clube | Ganhos (R$) | Rake (R$) |\n|---------|---------------|---------|---------|---------|\n'
         for _, row in resumo_mtt.iterrows():
-            relatorio += f'| {row['Player Name']} | {row['Total de Torneios']} |\n'
+            relatorio += f'| {row['Player Name']} | {row['Club Name']} | {row['Total de Torneios']} | {row['Ganhos (R$)']:.2f} | {row['Rake (R$)']:.2f} |\n'
         relatorio += '\n'
         relatorio += '| Jogador A | Jogador B | Torneios em Comum | % Jogador A | % Jogador B |\n'
         relatorio += '|-----------|-----------|-------------------|-------------|-------------|\n'
@@ -176,10 +176,10 @@ def gerar_pdf(protocolo, pares_cash, pares_mtt, df_cash, df_mtt, mesas_comuns_ca
     story.append(Paragraph('Cruzamento em Cash Games', styles['Heading1']))
     if not pares_cash.empty:
         # Tabela do resumo (jogador, total de mesas)
-        dados_resumo_cash = [['Jogador', 'Clube', 'Total de Mesas']]
+        dados_resumo_cash = [['Jogador', 'Clube', 'Total de Mesas', 'Ganhos (R$)', 'Rake (R$)']]
         for _, row in resumo_cash.iterrows():
-            dados_resumo_cash.append([row['Player Name'], row['Club Name'], row['Total de Mesas']])
-        tabela_resumo_cash = Table(dados_resumo_cash, colWidths=tabela_3_colunas)
+            dados_resumo_cash.append([row['Player Name'], row['Club Name'], row['Total de Mesas'], f'R$ {row['Ganhos (R$)']:.2f}', f'R$ {row['Rake (R$)']:.2f}'])
+        tabela_resumo_cash = Table(dados_resumo_cash, colWidths=tabela_5_colunas)
         tabela_resumo_cash.setStyle(estilo_tabela1)
         story.append(tabela_resumo_cash)
         story.append(Spacer(1, 12))
@@ -317,6 +317,8 @@ with aba_backend:
     resumo_mtt = pd.DataFrame()
     total_mesas_comuns_mtt = pd.DataFrame()
     mesas_comuns_mtt = pd.DataFrame()
+    mesas_selecionada_mtt = ()
+    df_mesa_mtt_resumo = pd.DataFrame()
 
     if st.session_state.df_backend is None:
         st.empty()
@@ -332,15 +334,29 @@ with aba_backend:
             if not df_cash.empty:
                 st.dataframe(df_cash.head())
 
-                resumo_cash = df_cash.groupby(['Player ID', 'Player Name', 'Club Name'])['Game ID'].nunique().reset_index()
-                resumo_cash.columns = ['Player ID', 'Player Name', 'Club Name', 'Total de Mesas']
-                st.dataframe(resumo_cash, hide_index=True, width='stretch')
+                resumo_cash = df_cash.groupby(['Player ID', 'Player Name', 'Club Name']).agg(
+                    Total_Mesas = ('Game ID', 'nunique'),
+                    Ganhos_Liquido = ('chip change', 'sum'),
+                    Rake = ('Game Fee change', 'sum')
+                ).reset_index()
+
+                resumo_cash.columns = ['Player ID', 'Player Name', 'Club Name', 'Total de Mesas', 'Ganhos (R$)', 'Rake (R$)']
+                st.dataframe(resumo_cash,
+                             hide_index=True,
+                             width='stretch',
+                             column_config = {
+                                 'Ganhos (R$)': st.column_config.NumberColumn(format='localized'),
+                                 'Rake (R$)': st.column_config.NumberColumn(format='localized')
+                             })
                 
                 mesas_por_jogador_cash = df_cash.groupby('Player ID')['Game ID'].nunique().reset_index()
                 mesas_por_jogador_cash.columns = ['Player ID', 'Total de Mesas']
                 # print(mesas_por_jogador_cash)
                 maos_por_jogador_cash = df_cash.groupby('Player ID')['Hand ID'].apply(set)
                 jogadores_cash = resumo_cash['Player ID'].unique().tolist()
+
+                lista_jogadores_cash = ['Todos'] + sorted(df_cash['Player Name'].unique().tolist())
+
                 # print(jogadores_cash)
                 pares_cash = []
 
@@ -350,9 +366,11 @@ with aba_backend:
                         b = jogadores_cash[j]
                         maos_comuns_cash = maos_por_jogador_cash[a] & maos_por_jogador_cash[b]
                         mesas_comuns_cash = df_cash[df_cash['Hand ID'].isin(maos_comuns_cash)]['Game ID'].unique()
+                        if len(mesas_comuns_cash) == 0:
+                            continue
                         total_mesas_comuns_cash |= set(mesas_comuns_cash)
                         # total_mesas_comuns_cash |= mesas_comuns_cash
-                        total_comuns = len(total_mesas_comuns_cash)
+                        total_comuns = len(mesas_comuns_cash)
                         total_a = mesas_por_jogador_cash.loc[mesas_por_jogador_cash['Player ID'] == a, 'Total de Mesas'].values[0]
                         total_b = mesas_por_jogador_cash.loc[mesas_por_jogador_cash['Player ID'] == b, 'Total de Mesas'].values[0]
                         pares_cash.append({
@@ -362,16 +380,36 @@ with aba_backend:
                             '% do Jogador A': round(total_comuns / total_a * 100, 1),
                             '% do Jogador B': round(total_comuns / total_b * 100, 1),
                 })
-
+                        
                 df_pares_cash = pd.DataFrame(pares_cash)
-                st.dataframe(df_pares_cash, hide_index=True, width='stretch')
+
+                col_filtro_a, col_filtro_b = st.columns(2)
+                with col_filtro_a:
+                    filtro_a = st.selectbox('Jogador A', lista_jogadores_cash)
+                with col_filtro_b:
+                    filtro_b = st.selectbox('Jogador B', lista_jogadores_cash)
+
+                df_pares_cash_filtrado = df_pares_cash.copy()
+
+                if filtro_a != 'Todos':
+                    df_pares_cash_filtrado = df_pares_cash_filtrado[
+                        (df_pares_cash_filtrado['Jogador A'] == filtro_a) |
+                        (df_pares_cash_filtrado['Jogador B'] == filtro_a)
+                    ]
+                if filtro_b != 'Todos':
+                    df_pares_cash_filtrado = df_pares_cash_filtrado[
+                        (df_pares_cash_filtrado['Jogador A'] == filtro_a) |
+                        (df_pares_cash_filtrado['Jogador B'] == filtro_b)
+                    ]
+                    
+                st.dataframe(df_pares_cash_filtrado, hide_index=True, width='stretch')
 
                 if len(total_mesas_comuns_cash) > 0:
                     st.markdown('---')
                     st.subheader('Detalhamento por mesa')
             
                     mesas_ordenadas_cash = sorted(mesas_comuns_cash, reverse=True)
-                    mesa_selecionada_cash = st.selectbox('Selecione uma mesa', total_mesas_comuns_cash)
+                    mesa_selecionada_cash = st.selectbox('Selecione uma mesa', sorted(total_mesas_comuns_cash, reverse=True))
                     df_mesa_cash = df_cash[df_cash['Game ID'] == mesa_selecionada_cash].copy()
                     df_mesa_cash = df_mesa_cash.sort_values(['Hand ID', 'Player ID'])
                     df_mesa_cash_resumo = df_mesa_cash.groupby(['Player ID', 'Player Name', 'Club Name']).agg(
