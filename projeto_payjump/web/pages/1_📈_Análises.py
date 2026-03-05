@@ -23,8 +23,10 @@ from reportlab.pdfbase.ttfonts import TTFont
 # -----------------------------------------------------
 # CAMINHOS DOS DIRETÓRIOS
 # -----------------------------------------------------
-FONT_DIR = Path('C:/Windows/Fonts')
 BASE_DIR = Path(__file__).resolve().parent.parent
+FONT_DIR = BASE_DIR / 'fonts'
+
+print(FONT_DIR)
 
 # -----------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA
