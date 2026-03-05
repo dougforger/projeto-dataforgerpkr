@@ -793,19 +793,20 @@ if uploaded_file is not None:
                 st.info('ℹ️ Nenhum ressarcimento futuro')
 
     st.markdown('---')
+    
     col_export_1, col_export_2, col_export_3 = st.columns(3)
         
     with col_export_1:
         # ===== DOWNLOAD DE ACUMULADOS ATUALIZADOS =====
-        if len(ressarcimentos_futuros) > 0:
-            st.subheader('💾 Salvar Acumulados')
+        st.subheader('💾 Salvar Acumulados')
 
-            st.info('''
-            **IMPORTANTE:** Baixe o arquivo de acumulados atualizados para usar no próximo ressarcimento!
+        st.info('''
+        **IMPORTANTE:** Baixe o arquivo de acumulados atualizados para usar no próximo ressarcimento!
+        
+        Esse arquivo contém os jogaodres que ainda não atingiram o valor mínimo.
+        ''')
             
-            Esse arquivo contém os jogaodres que ainda não atingiram o valor mínimo.
-            ''')
-            
+        if len(ressarcimentos_futuros) > 0:
 
             # Prepara DataFrame para download
             from datetime import date
