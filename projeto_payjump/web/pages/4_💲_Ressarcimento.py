@@ -3,6 +3,25 @@ import math
 import streamlit as st
 import pandas as pd
 from pathlib import Path
+from datetime import date, datetime
+
+# ===== IMPORTS DO BANCO DE DADOS =====
+from utils.database import (
+    # Fraudadores
+    get_ids_fraudadores,
+    get_fraudadores_completo,
+    adicionar_fraudadores_lote,
+
+    # Histórico
+    salvar_ressarcimentos_lote,
+    get_historico_completo,
+    get_estatisticas_historico,
+
+    # Acumulados
+    get_acumulados,
+    atualizar_acumulados,
+    get_estatisticas_acumulados
+)
 
 st.set_page_config(
     page_title='Ressarcimento',
@@ -22,25 +41,30 @@ uploaded_file = st.file_uploader(
     help='Arquivo gerado pela query de análise de bots do Snowflake.'
 )
 
-def calcular_saldo_por_bot(df, bot_id, df_clubes):
+def calcular_saldo_por_bot(df, id_fraudador, df_clubes, ids_fraudadores = []):
     """
-    Calcula o saldo líquido de cada jogador (não-bot) contra um bot específico.
+    Calcula o saldo líquido de cada jogador (não fraudador) contra um fraudador específico.
     
     Args:
-        df: DataFrame completo com todas as mãos
-        bot_id: ID do bot para analisar
-        df_clubes: DataFrame com informações dos clubes
+        df (DataFrame): DataFrame completo com todas as mãos
+        id_fraudador (int): ID do fraudador para analisar
+        df_clubes (DataFrame): DataFrame com informações dos clubes
+        ids_fraudadores (list): Lista de IDs de fraudadores a excluir do cálculo do ressarcimento
 
     Returns:
-        DataFrame com colunas: player_id, player_name, club_id,  , saldo_liquido
+        DataFrame com colunas: player_id, player_name, club_id, club_name , saldo_liquido
     """
-    # Filtrar apenas as mãos onde o bot estava presente
-    maos_do_bot = df[df['HAND_ID'].isin(
-        df[df['PLAYER_ID'] == bot_id]['HAND_ID']
+    # Filtrar apenas as mãos onde o fraudador estava presente
+    maos_fraudador = df[df['HAND_ID'].isin(
+        df[df['PLAYER_ID'] == id_fraudador]['HAND_ID']
     )]
 
-    # Filtrar apenas jogadores não-bot nessas mãos
-    jogadores = maos_do_bot[maos_do_bot['IS_BOT'] == False]
+    # Filtrar apenas jogadores não fraudadores nessas mãos
+    jogadores = maos_fraudador[maos_fraudador['IS_BOT'] == False]
+
+    # ===== FILTRAR FRAUDADORES ANTES DE CALCULAR =====
+    if len(ids_fraudadores) > 0:
+        jogadores = jogadores[~jogadores['PLAYER_ID'].isin(ids_fraudadores)]
 
     # Calcular saldo líquido de cada jogador
     saldos = jogadores.groupby(['PLAYER_ID', 'PLAYER_NAME', 'CLUB_ID']).agg({
@@ -197,62 +221,82 @@ if uploaded_file is not None:
     with st.expander('👀 Prévia dos Dados'):
         st.dataframe(df.head(10))
     
-    st.markdown('---')
-
     # ===== UPLOAD DE ACUMULADOS ANTERIORES =====
+    st.markdown('---')
+    st.subheader('🗄️ Dados do Banco')
+    
     col_upload_1, col_upload_2 = st.columns([1, 2])
     with col_upload_1:
-        st.subheader('📝 Ressarcimentos Acumulados (Opcional)')
-    with col_upload_2:
-        st.info('''
-        **Se houver jogadores com ressarcimentos pendentes de semanas anteriores**,
-        faça o upload do arquivo CSV de acumulados aqui. Esses valores serão somados aos novos cálculos desta semana.
-        ''')
-    with st.expander('📤 Upload do Arquivo'):
-        uploaded_acumulados = st.file_uploader(
-            'Upload de Acumulados Anteriores (CSV)',
-            type=['csv'],
-            help='Arquivo baixado no final do cálculo da semana anterior'
-        )
+        st.markdown('#### 🚫 Fraudadores Conhecidos')
+        
+        # Carregar automaticamente do banco
+        ids_fraudadores = get_ids_fraudadores()
 
-        # Carregar acumulados se houver
-        if uploaded_acumulados is not None:
-            try:
-                df_acumulados_antigos = pd.read_csv(uploaded_acumulados)
+        if len(ids_fraudadores) > 0:
+            st.success(f'✅ {len(ids_fraudadores)} fraudador(es) carregado(s) automaticamente')
 
-                # Validar colunas esperadas
-                colunas_esperadas = ['player_id', 'player_name', 'club_id', 'club_name', 'ressarcimento_acumulado', 'data_ultima_atualizacao']
-
-                if all(col in df_acumulados_antigos.columns for col in colunas_esperadas):
-                    st.success(f'✅ Acumulados carregados: {len(df_acumulados_antigos)} jogador(es) com valor(es) pendente(s)')
-
-                    with st.expander('👀 Prévia dos Acumulados'):
-                        st.dataframe(
-                            df_acumulados_antigos,
-                            hide_index=True,
-                            width='stretch',
-                            column_config={
-                                'player_id': 'ID Jogador',
-                                'player_name': 'Nome Jogador',
-                                'club_id': 'ID Clbue',
-                                'club_name': 'Nome Clube',
-                                'ressarcimento_acumulado': st.column_config.NumberColumn('Acumulado (R$)', format='%.2f'),
-                                'data_ultima_atualizacao': 'Última Atualização'
-                            }
+            # Mostrar lista de fraudadores
+            with st.expander('👀 Ver a Lista de Fraudadores'):
+                df_fraudadores = pd.DataFrame(get_fraudadores_completo())
+                st.dataframe(
+                    df_fraudadores,
+                    hide_index=True,
+                    width='stretch',
+                    column_config={
+                        'player_id': 'ID Jogador',
+                        'player_name': 'Nome Jogador',
+                        'club_id': 'ID Clube',
+                        'club_name': 'Nome Clube',
+                        'data_identificação': 'Data Identificação',
+                        'protocolo': 'Protocolo',
+                        'valor_total_retido': st.column_config.NumberColumn(
+                            'Valor Retido (R$)',
+                            format='%.2f'
                         )
-                else:
-                    st.error('❌ Arquivo de acumulados com formato inválido! Verifique as colunas.')
-                    df_acumulados_antigos = pd.DataFrame()
-            except Exception as e:
-                st.error(f'❌ Erro ao carregar acumulados: {e}')
-                df_acumulados_antigos = pd.DataFrame()
+                    }
+                )
         else:
-            # Se não houver uploado, cria DataFrame vazio
+            st.info('ℹ️ Nenhum fraudador no banco. Todos os jogadores serão elegíveis para ressarcimento.')
+    
+    with col_upload_2:
+        st.markdown('#### ⏳ Acumulados Pendentes')
+
+        # Carregar automaticamente do banco
+        acumulados_anteriores = get_acumulados()
+        df_acumulados_antigos = pd.DataFrame(acumulados_anteriores)
+
+        if len(df_acumulados_antigos) > 0:
+            st.success(f'✅ {len(df_acumulados_antigos)} acumulado(s) carregado(s) automaticamente.')
+
+            # Estatísticas rápidas
+            stats_acumulados = get_estatisticas_acumulados()
+            st.metric('Total Acumulado', f'R$ {stats_acumulados['valor_total_acumulado']:.2f}')
+
+            # Mostrar lista de acumulados
+            with st.expander('👀 Ver a Lista de Acumulados'):
+                st.dataframe(
+                    df_acumulados_antigos,
+                    hide_index=True,
+                    width='stretch',
+                    column_config={
+                        'player_id': 'ID Jogador',
+                        'player_name': 'Nome Jogador',
+                        'club_id': 'ID Clube',
+                        'club_name': 'Nome Clube',
+                        'ressarcimento_acumulado': st.column_config.NumberColumn(
+                            'Acumulado (R$)',
+                            format='%.2f'
+                        ),
+                        'data_ultima_atualizacao': 'Última Atualização'
+                    }
+                )
+        else:
+            # DataFrame vazio para não quebrar o código
             df_acumulados_antigos = pd.DataFrame(columns=[
                 'player_id', 'player_name', 'club_id', 'club_name', 'ressarcimento_acumulado', 'data_ultima_atualizacao'
             ])
-            st.info('ℹ️ Nenhum acumulado anterior. Os cálculos começarão do zero.')
-
+            st.info('ℹ️ Nenhum acumulado pendente.')
+    
     st.markdown('---')
 
     # ===== CARREGAR INFORMAÇÕES DE CLUBES E LIGAS ======
@@ -303,9 +347,6 @@ if uploaded_file is not None:
     # Adicionar coluna editável para valor retido
     df_bots['valor_retido'] = 0.0
     df_bots['rake_retido'] = 0.0
-
-    # df_bots.columns = ['PLAYER_ID', 'PLAYER_NAME', 'RESULTADO_LIQUIDO']
-    # df_bots['VALOR_RETIDO'] = 0.0
 
     # Verificar se há bots em múltiplas ligas
     bots_multiplas_ligas = df[df['IS_BOT'] == True].groupby('PLAYER_ID')['UNION_ID'].nunique()
@@ -470,7 +511,9 @@ if uploaded_file is not None:
     resultados_por_bot = {}
     
     if calcular:
-
+        # Informar sobre fraudadores (se houver)
+        if len(ids_fraudadores) > 0:
+            st.info(f'ℹ️ {len(ids_fraudadores)} fraudador(es) conhecido(s) serão automaticamente excluídos dos cálculos. O valor será redistribuído entre vítimas legítimas.')
         with st.spinner('Processando ressarcimentos...'):
             st.markdown('---')
             st.subheader('📊 Resultados dos Ressarcimentos')
@@ -505,7 +548,7 @@ if uploaded_file is not None:
                     continue
 
                 # Calcular saldos das vítimas
-                vitimas = calcular_saldo_por_bot(df, bot_id, df_clubes)
+                vitimas = calcular_saldo_por_bot(df, bot_id, df_clubes, ids_fraudadores)
 
                 # Se não há vítimas, pulas
                 if len(vitimas) == 0:
@@ -580,7 +623,7 @@ if uploaded_file is not None:
                     )
                     # Preencher NaN com 0
                     df_consolidado['ressarcimento_acumulado'] = df_consolidado['ressarcimento_acumulado'].fillna(0.0)
-                    df_consolidado['acumulado_anterior'] = df_consolidado['ressarcimento_anterior']
+                    df_consolidado['acumulado_anterior'] = df_consolidado['ressarcimento_acumulado']
                     df_consolidado.drop(columns=['ressarcimento_acumulado'], inplace=True)
 
                 # Calcular total (novo + acumulado)
@@ -980,6 +1023,157 @@ if uploaded_file is not None:
 
     st.markdown('---')
     
+    # ===== SALVAR NO BANCO DE DADOS =====
+    st.subheader('💾 Salvar no Banco de Dados')
+    st.info('''
+        **IMPORTANTE:** Salve os dados no banco para:
+        - Adicionar fraudadores à lista (evita ressarcimentos futuros)
+        - Registar ressarcimentos no histórico (rastreabilidade)
+        - Atualizar acumulados automaticamente (continuidade entre semanas)
+    ''')
+
+    # Validação: protocolo é obrigatório para salvar
+    protocolo = st.number_input(
+        'Protocolo',
+        value=None,
+        step=None,
+        placeholder='Ex: 123456789',
+        help='Número do Protocolo do caso a ser ressarcido.'
+    )
+    
+    if not protocolo or protocolo is None:
+        st.warning('⚠️ Digite o **Número do Protocolo** acima para habilitar o salvamento no banco')
+        st.stop()
+
+    # Referência (opcional, gera automático se vazio)
+    referencia_padrao = f'Semana {date.today().strftime('%d/%m/%Y')}'
+    referencia = st.text_input(
+        'Referência (Opcional)',
+        value=referencia_padrao,
+        help='Descrição do período/lote de ressarcimento',
+        max_chars=200
+    )
+
+    st.markdown('---')
+
+    # ===== OPÇÕES PARA SALVAMENTO ======
+    col_salvamento_1, col_salvamento_2, col_salvamento_3 = st.columns(3)
+
+    with col_salvamento_1:
+        salvar_fraudadores = st.checkbox(
+            '🚫 Salvar Fraudadores',
+            value=True,
+            help='Adiciona os bots/fraudadores desta apuração à lista'
+        )
+
+    with col_salvamento_2:
+        salvar_historico = st.checkbox(
+            '📊 Salvar Histórico',
+            value=True,
+            help='Registra os ressarcimentos imediados no histórico'
+        )
+
+    with col_salvamento_3:
+        salvar_acumulados_db = st.checkbox(
+            '⏳ Atualizar Acumulados',
+            value=True,
+            help='Atualiza a tabela de acumulados pendentes'
+        )
+
+    st.markdown('---')
+    # ===== BOTÃO DE SALVAR =====
+    if st.button('💾 Salvar Tudo no Banco', type='primary', width='stretch'):
+        
+        with st.spinner('Salvando no banco de dados...'):
+            resultados_salvamento = {
+                'fraudadores': 0,
+                'historico': 0,
+                'acumulados': 0,
+                'erros': []
+            }
+
+            # 1. SALVAR FRAUDADORES
+            if salvar_fraudadores:
+                try:
+                    fraudadores_para_salvar = []
+
+                    for _, fraudador in bots_editados.iterrows():
+                        fraudadores_para_salvar.append({
+                            'player_id': int(fraudador['id_bot']),
+                            'player_name': fraudador['nome_bot'],
+                            'club_id': fraudador['clube_id'],
+                            'club_name': fraudador['nome_clube'],
+                            'protocolo': protocolo,
+                            'valor_total_retido': fraudador['valor_reais'] + fraudador['rake_reais']
+                        })
+
+                    count = adicionar_fraudadores_lote(fraudadores_para_salvar)
+                    resultados_salvamento['fraudadores'] = count
+                
+                except Exception as e:
+                    resultados_salvamento['erros'].append(f'Erro ao salvar fraudadores: {e}')
+            
+            # 2. SALVAR HISTÓRICO
+            if salvar_historico and len(ressarcimentos_imediatos) > 0:
+                try:
+                    count = salvar_ressarcimentos_lote(
+                        ressarcimentos=ressarcimentos_imediatos,
+                        protocolo=protocolo,
+                        referencia=referencia
+                    )
+                    resultados_salvamento['historico'] = count
+                
+                except Exception as e:
+                    resultados_salvamento['erros'].append(f'Erro ao salvar histórico: {e}')
+
+            # 3. ATUALIZAR ACUMULADOS
+            if salvar_acumulados_db:
+                try:
+                    if len(ressarcimentos_futuros) > 0:
+                        count = atualizar_acumulados(ressarcimentos_futuros)
+                        resultados_salvamento['acumulados'] = count
+                    else:
+                        # Se não houver acumulados novos, limpar tabela
+                        from utils.database import limpar_acumulados
+                        limpar_acumulados()
+                        resultados_salvamento['acumulados'] = 0
+                    
+                except Exception as e:
+                    resultados_salvamento['erros'].append(f'Erro ao atualizar acumulados: {e}')
+        
+        # ===== MOSTRAR RESULTADOS =====
+        st.markdown('---')
+
+        if len(resultados_salvamento['erros']) == 0:
+            st.success('✅ Dados salvos com sucesso no banco de dados!')
+
+            # Resumo do que foi salvo
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                if salvar_fraudadores:
+                    st.metric('Fraudadores Salvos', resultados_salvamento['fraudadores'])
+
+            with col2:
+                if salvar_historico:
+                    st.metric('Ressarcimentos Registrados', resultados_salvamento['historico'])
+
+            with col3:
+                if salvar_acumulados_db:
+                    st.metric('Acumulados Atualizados', resultados_salvamento['acumulados'])
+
+            # Informação Importante
+            st.info(f'''
+            - 📝 **Protocolo:** {protocolo:.0f}
+            - 📅 **Referência:** {referencia}
+            - 🕛 **Data/Hora:** {datetime.now().strftime('%d/%m/%Y às %H:%M:%S')}
+            ''')
+
+        else:
+            st.error('❌ Ocorreram erros ao salvar os dados:')
+            for erro in resultados_salvamento['erros']:
+                st.error(f'- {erro}')
+
     col_export_1, col_export_2, col_export_3 = st.columns(3)
         
     with col_export_1:
@@ -995,8 +1189,6 @@ if uploaded_file is not None:
         if len(ressarcimentos_futuros) > 0:
 
             # Prepara DataFrame para download
-            from datetime import date
-
             df_download = df_futuros[[
                 'player_id', 'player_name', 'club_id', 'club_name', 'ressarcimento_total'
             ]].copy()
@@ -1091,8 +1283,6 @@ if uploaded_file is not None:
         ''')
 
         try:
-            from datetime import date
-
             excel_bytes = criar_excel_ressarcimento(
                 resultados_por_bot,
                 ressarcimentos_imediatos,

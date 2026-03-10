@@ -82,9 +82,9 @@ class Acumulado(Base):
     Cada jogador+clube só pode ter um registro (UNIQUE constraint).
     '''
     __tablename__ = 'acumulados'
-    __table_args__ = [
-        UniqueConstraint('player_id', 'club_id', name='uq_player_club')
-    ]
+    __table_args__ = (
+        UniqueConstraint('player_id', 'club_id', name='uq_player_club'),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     player_id = Column(Integer, nullable=False, index=True)
@@ -165,15 +165,29 @@ def adicionar_fraudador(player_id, player_name, club_id, club_name, protocolo, v
     '''
     session = Session()
     try:
-        fraudador = FraudadorIdentificado(
-            player_id = player_id,
-            player_name = player_name,
-            club_id = club_id,
-            club_name = club_name,
-            protocolo = protocolo,
-            valor_total_retido = valor_retido
-        )
-        session.merge(fraudador) # merge = INSERT ou UPDATE se já existir
+        existing = session.query(FraudadorIdentificado).filter_by(
+            player_id=int(player_id)
+        ).first()
+
+        if existing:
+            existing.player_name = player_name
+            existing.club_id = club_id
+            existing.club_name = club_name
+            existing.data_identificacao = datetime.now().date()
+            existing.protocolo = protocolo
+            existing.valor_total_retido = valor_retido
+        else:
+            fraudador = FraudadorIdentificado(
+                player_id = int(player_id),
+                player_name = player_name,
+                club_id = club_id,
+                club_name = club_name,
+                data_identificacao = datetime.now().date(),
+                protocolo = protocolo,
+                valor_total_retido = valor_retido
+            )
+            session.add(fraudador)
+
         session.commit()
         return True
     except Exception as e:
@@ -186,34 +200,53 @@ def adicionar_fraudador(player_id, player_name, club_id, club_name, protocolo, v
 def adicionar_fraudadores_lote(fraudadores):
     '''
     Adiciona múltiplos fraudadores de uma vez.
+    Usa upsert baseado em player_id: atualiza se já existir, insere se não existir.
 
     Args:
         fraudadores (list[dict]): Lista de dicionários com dados dos fraudadores
 
     Returns:
-        int: Quantidade de fraudadores adicionados
+        int: Quantidade de fraudadores adicionados/atualizados
+
+    Raises:
+        Exception: Propaga exceções para que a UI possa exibi-las
     '''
     session = Session()
     try:
         count = 0
         for f in fraudadores:
-            fraudador = FraudadorIdentificado(
-                player_id = f['player_id'],
-                player_name = f['player_name'],
-                club_id = f['club_id'],
-                club_name = f['club_name'],
-                data_identificacao = datetime.now().date(),
-                protocolo = f['protocolo'],
-                valor_total_retido = f['valor_total_retido']
-            )
-            session.merge(fraudador)
+            existing = session.query(FraudadorIdentificado).filter_by(
+                player_id=int(f['player_id'])
+            ).first()
+
+            if existing:
+                # Atualizar registro existente
+                existing.player_name = f['player_name']
+                existing.club_id = int(f['club_id']) if f['club_id'] is not None else None
+                existing.club_name = f['club_name']
+                existing.protocolo = int(f['protocolo'])
+                existing.valor_total_retido = float(f['valor_total_retido'])
+                existing.data_identificacao = datetime.now().date()
+            else:
+                # Inserir novo registro
+                fraudador = FraudadorIdentificado(
+                    player_id = int(f['player_id']),
+                    player_name = f['player_name'],
+                    club_id = int(f['club_id']) if f['club_id'] is not None else None,
+                    club_name = f['club_name'],
+                    data_identificacao = datetime.now().date(),
+                    protocolo = int(f['protocolo']),
+                    valor_total_retido = float(f['valor_total_retido'])
+                )
+                session.add(fraudador)
+
             count += 1
+
         session.commit()
         return count
     except Exception as e:
         session.rollback()
-        print(f'Erro ao adicionar fraudadores em lote: {e}')
-        return 0
+        raise Exception(f'Erro ao adicionar fraudadores em lote: {e}')
     finally:
         session.close()
 

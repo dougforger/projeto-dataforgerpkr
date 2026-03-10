@@ -29,3 +29,9 @@ output/*
 
 # Arquivos testes
 projeto_payjump/web/data/player_detail_2026-02-25-1641.csv
+
+# Arquivos de Banco de Dados
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
