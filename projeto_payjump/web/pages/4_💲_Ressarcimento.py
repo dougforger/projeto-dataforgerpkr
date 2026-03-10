@@ -32,7 +32,7 @@ def calcular_saldo_por_bot(df, bot_id, df_clubes):
         df_clubes: DataFrame com informações dos clubes
 
     Returns:
-        DataFrame com colunas: player_id, player_name, club_id, nome_clube, saldo_liquido
+        DataFrame com colunas: player_id, player_name, club_id,  , saldo_liquido
     """
     # Filtrar apenas as mãos onde o bot estava presente
     maos_do_bot = df[df['HAND_ID'].isin(
@@ -235,7 +235,7 @@ if uploaded_file is not None:
                                 'player_id': 'ID Jogador',
                                 'player_name': 'Nome Jogador',
                                 'club_id': 'ID Clbue',
-                                'nome_clube': 'Nome Clube',
+                                'club_name': 'Nome Clube',
                                 'ressarcimento_acumulado': st.column_config.NumberColumn('Acumulado (R$)', format='%.2f'),
                                 'data_ultima_atualizacao': 'Última Atualização'
                             }
@@ -249,7 +249,7 @@ if uploaded_file is not None:
         else:
             # Se não houver uploado, cria DataFrame vazio
             df_acumulados_antigos = pd.DataFrame(columns=[
-                'player_id', 'player_name', 'club_id', 'nome_clube', 'ressarcimento_acumulado', 'data_ultima_atualizacao'
+                'player_id', 'player_name', 'club_id', 'club_name', 'ressarcimento_acumulado', 'data_ultima_atualizacao'
             ])
             st.info('ℹ️ Nenhum acumulado anterior. Os cálculos começarão do zero.')
 
@@ -374,6 +374,14 @@ if uploaded_file is not None:
             )
         }
     )
+    # ===== NORMALIZAR SEPARADORES DECIMAIS =====
+
+    for col in ['valor_retido', 'rake_retido']:
+        if col in bots_editados.columns:
+            # Se a coluna for string (caso o usuário tenha digitado com vírgula)
+            bots_editados[col] = bots_editados[col].apply(
+                lambda x: float(str(x).replace(',', '.')) if pd.notna(x) else 0.0
+            )
 
     # ===== CONVERTER OS VALORES PARA REAL =====
     bots_editados['valor_reais'] = (bots_editados['valor_retido'].astype(float) / bots_editados['handicap'].astype(float)) * 5
@@ -471,6 +479,9 @@ if uploaded_file is not None:
             progress_bar = st.progress(0)
             status_text = st.empty()
 
+            # Lista ÚNICA para TODOS os ressarcimentos (antes de consolidar)
+            todos_ressarcimentos_brutos = []
+
             # Processar cada bot
             for idx, bot in bots_editados.iterrows():
                 bot_id = bot['id_bot']
@@ -518,51 +529,226 @@ if uploaded_file is not None:
                 # Armazenar resultado
                 total_ressarcido_imediato = vitimas[vitimas['status'] == 'Imediato']['ressarcimento'].sum()
                 total_ressarcido_futuro = vitimas[vitimas['status'] == 'Futuro']['ressarcimento'].sum()
+                total_ressarcido = vitimas['ressarcimento'].sum()
 
                 resultados_por_bot[bot_id] = {
                     'bot_nome': bot_nome,
                     'valor_disponivel': valor_disponivel,
                     'vitimas': vitimas,
-                    'total_ressarcido': total_ressarcido_imediato + total_ressarcido_futuro,
-                    'total_imediato': total_ressarcido_imediato,
-                    'total_futuro': total_ressarcido_futuro,
+                    'total_ressarcido': total_ressarcido,
+                    'total_imediato': vitimas[vitimas['status'] == 'Imediato']['ressarcimento'].sum(),
+                    'total_futuro': vitimas[vitimas['status'] == 'Futuro']['ressarcimento'].sum(),
                     'mensagem': 'Processado com sucesso'
                 }
 
-                # Adiciona às listas separadas
+                # Adiciona à lista BRUTA (sem consolidar ainda)
                 for _, vitima in vitimas.iterrows():
-                    # Verificar se há acumulado anterior para este jogador
-                    acumulado_anterior = 0.0
-                    if len(df_acumulados_antigos) > 0:
-                        match = df_acumulados_antigos[
-                            (df_acumulados_antigos['player_id'] == vitima['player_id']) &
-                            (df_acumulados_antigos['club_id'] == vitima['club_id'])
-                        ]
-                        if len(match) > 0:
-                            acumulado_anterior = match.iloc[0]['ressarcimento_acumulado']
-
-                    # Somar com acumulado anterior
-                    ressarcimento_total = vitima['ressarcimento'] + acumulado_anterior
-
-                    dados_ressarcimento = {
+                    todos_ressarcimentos_brutos.append({
                         'player_id': int(vitima['player_id']),
                         'player_name': vitima['player_name'],
                         'club_id': int(vitima['club_id']),
                         'club_name': vitima['club_name'],
-                        'ressarcimento_novo': vitima['ressarcimento'], # Apenas desta semana
-                        'acumulado_anterior': acumulado_anterior,
-                        'ressarcimento_total': ressarcimento_total
-                    }
+                        'ressarcimento': vitima['ressarcimento']
+                    })
 
-                    # Decidir se é imediato ou futuro baseado no total
-                    if ressarcimento_total >= valor_minimo:
-                        ressarcimentos_imediatos.append(dados_ressarcimento)
+                # Limpar progresso
+                progress_bar.empty()
+                status_text.empty()
+
+            # ===== CONSOLIDAÇÃO: AGRUPAR POR PLAYER_ID + CLUB_ID =====
+            if len(todos_ressarcimentos_brutos) > 0:
+                df_brutos = pd.DataFrame(todos_ressarcimentos_brutos)
+
+                # Agrupar por player_id + club_id (somado ressarcimentos)
+                df_consolidado = df_brutos.groupby(['player_id', 'club_id']).agg({
+                    'player_name': 'first',
+                    'club_name': 'first',
+                    'ressarcimento': 'sum'
+                }).reset_index()
+
+                df_consolidado.rename(columns={'ressarcimento': 'ressarcimento_novo'}, inplace=True)
+
+                # ===== ADICIONAR ACUMULADOS ANTERIORES =====
+                df_consolidado['acumulado_anterior'] = 0.0
+
+                if len(df_acumulados_antigos) > 0:
+                    # Merfe com acumulados anteriores
+                    df_consolidado = df_consolidado.merge(
+                        df_acumulados_antigos[['player_id', 'club_id', 'ressarcimento_acumulado']],
+                        on=['player_id', 'club_id'],
+                        how='left'
+                    )
+                    # Preencher NaN com 0
+                    df_consolidado['ressarcimento_acumulado'] = df_consolidado['ressarcimento_acumulado'].fillna(0.0)
+                    df_consolidado['acumulado_anterior'] = df_consolidado['ressarcimento_anterior']
+                    df_consolidado.drop(columns=['ressarcimento_acumulado'], inplace=True)
+
+                # Calcular total (novo + acumulado)
+                df_consolidado['ressarcimento_total'] = (
+                    df_consolidado['ressarcimento_novo'] + df_consolidado['acumulado_anterior']
+                )
+
+                # ===== SEPARAR IMEDIATOS E FUTUROS =====
+
+                df_imediatos = df_consolidado[df_consolidado['ressarcimento_total'] >= valor_minimo].copy()
+                df_futuros = df_consolidado[df_consolidado['ressarcimento_total'] < valor_minimo].copy()
+
+                # Converter para lista de dicionários
+                ressarcimentos_imediatos = df_imediatos.to_dict('records')
+                ressarcimentos_futuros = df_futuros.to_dict('records')
+                
+            else:
+                ressarcimentos_imediatos = []
+                ressarcimentos_futuros = []
+
+                # # Adiciona às listas separadas
+                # for _, vitima in vitimas.iterrows():
+                #     # Verificar se há acumulado anterior para este jogador
+                #     acumulado_anterior = 0.0
+                #     if len(df_acumulados_antigos) > 0:
+                #         match = df_acumulados_antigos[
+                #             (df_acumulados_antigos['player_id'] == vitima['player_id']) &
+                #             (df_acumulados_antigos['club_id'] == vitima['club_id'])
+                #         ]
+                #         if len(match) > 0:
+                #             acumulado_anterior = match.iloc[0]['ressarcimento_acumulado']
+
+                #     # Somar com acumulado anterior
+                #     ressarcimento_total = vitima['ressarcimento'] + acumulado_anterior
+
+                #     dados_ressarcimento = {
+                #         'player_id': int(vitima['player_id']),
+                #         'player_name': vitima['player_name'],
+                #         'club_id': int(vitima['club_id']),
+                #         'club_name': vitima['club_name'],
+                #         'ressarcimento_novo': vitima['ressarcimento'], # Apenas desta semana
+                #         'acumulado_anterior': acumulado_anterior,
+                #         'ressarcimento_total': ressarcimento_total
+                #     }
+
+                #     # Decidir se é imediato ou futuro baseado no total
+                #     if ressarcimento_total >= valor_minimo:
+                #         ressarcimentos_imediatos.append(dados_ressarcimento)
+                #     else:
+                #         ressarcimentos_futuros.append(dados_ressarcimento)
+
+            # ===== PAINEL DE VALIDAÇÃO (DEBUG) =====
+
+            with st.expander('🔍 Debug: Validação da Consolidação', expanded=False):
+                st.markdown('**Verificar se a consolidação está correta:**')
+
+                if len(todos_ressarcimentos_brutos) > 0:
+                    df_brutos = pd.DataFrame(todos_ressarcimentos_brutos)
+
+                    # Mostrar ressarcimentos ANTES da consolidação
+                    st.markdown('#### Antes da Consolidação (dados brutos por bot)')
+                    st.caption('Aqui você vê cada ressarcimento individual por bot. Jogadores que enfrentaram múltiplos bots aparecem várias vezes.')
+
+                    df_brutos_display = df_brutos.copy()
+                    df_brutos_display = df_brutos_display.sort_values(['player_id', 'club_id'])
+
+                    st.dataframe(
+                        df_brutos_display,
+                        hide_index=True,
+                        width='stretch',
+                        column_config={
+                            'player_id': 'ID Jogador',
+                            'player_name': 'Nome Jogador',
+                            'club_id': 'ID Clube',
+                            'club_name': 'Nome Clube',
+                            'ressarcimento': st.column_config.NumberColumn(
+                                'Ressarcimento (R$)',
+                                format='R$ %.2f'
+                            )
+                        }
+                    )
+
+                    st.metric('Total de Linhas (com duplicadas)', len(df_brutos))
+                    st.metric('Total Soma Bruta', f'R$ {df_brutos['ressarcimento'].sum():.2f}')
+
+                    st.markdown('---')
+
+                    # Mostrar quem tem múltiplas entradas
+                    duplicatas = df_brutos_display.groupby(['player_id', 'club_id']).size().reset_index(name='quantidade')
+                    duplicatas = duplicatas[duplicatas['quantidade'] > 1]
+
+                    if len(duplicatas) > 0:
+                        with st.expander('#### Jogadores com Múltiplos Ressarcimentos (enfrentaram mais de 1 bot)', expanded=False):
+                            for _, dup in duplicatas.iterrows():
+                                player_id = dup['player_id']
+                                club_id = dup['club_id']
+                                qtd = dup['quantidade']
+
+                                # Buscar todas as entreadas deste jogador
+                                entradas = df_brutos[
+                                    (df_brutos['player_id'] == player_id) &
+                                    (df_brutos['club_id'] == club_id)
+                                ]
+
+                                player_name = entradas.iloc[0]['player_name']
+                                club_name = entradas.iloc[0]['club_name']
+                                total = entradas['ressarcimento'].sum()
+
+                                st.markdown(f'**{player_name} ({player_id})** - {club_name}')
+
+                                col_debug_1, col_debug_2 = st.columns([3, 1])
+                                with col_debug_1:
+                                    # Mostrar cada ressarcimento individual
+                                    detalhes = ''
+                                    for idx, entrada in entradas.iterrows():
+                                        detalhes += f'R$ {entrada['ressarcimento']:.2f}'
+                                        if idx < (len(entradas) - 1):
+                                            detalhes += ' + '
+                                    st.text(detalhes)
+                                
+                                with col_debug_2:
+                                    st.metric('Total', f'R$ {total:.2f}')
                     else:
-                        ressarcimentos_futuros.append(dados_ressarcimento)
+                        st.info('✅ Nenhum jogador enfrentou múltiplos bots')
 
-            # Limpar progresso
-            progress_bar.empty()
-            status_text.empty()
+                    st.markdown('---')
+
+                    # Mostrar consolidação DEPOIS
+                    st.markdown('#### Depois da Consolidação (agrupado por jogador + clube)')
+                    st.caption('Aqui cada jogador aparece apenas uma vez, com a soma de todos os ressarcimentos.')
+
+                    # Agrupar
+                    df_consolidado_debug = df_brutos.groupby(['player_id', 'club_id']).agg({
+                        'player_name': 'first',
+                        'club_name': 'first',
+                        'ressarcimento': 'sum'
+                    }).reset_index()
+
+                    df_consolidado_debug = df_consolidado_debug.sort_values('ressarcimento', ascending=False)
+
+                    st.dataframe(
+                        df_consolidado_debug,
+                        hide_index=True,
+                        width='stretch',
+                        column_config={
+                            'player_id': 'ID Jogador',
+                            'player_name': 'Nome Jogador',
+                            'club_id': 'ID Clube',
+                            'club_name': 'Nome Clube',
+                            'ressarcimento': st.column_config.NumberColumn(
+                                'Ressarcimento (R$)',
+                                format='R$ %.2f'
+                            )
+                        }
+                    )
+                    
+                    st.metric('Totao de Linhas (Após Consolidação)', len(df_consolidado_debug))
+                    st.metric('Total Soma Consolidada', f'{df_consolidado_debug['ressarcimento'].sum():.2f}')
+
+                    # Validação: as somas deve ser iguais!
+                    soma_bruta = df_brutos['ressarcimento'].sum()
+                    soma_consolidada = df_consolidado_debug['ressarcimento'].sum()
+
+                    if abs(soma_bruta - soma_consolidada) < 0.01: # Tolerância de 1 centavo por arredondamentos
+                        st.success(f'✅ Consolidação correta! Soma bruta = Soma consolidada (R$ {soma_bruta:.2f})')
+                    else:
+                        st.error(f'❌ ERRO na consolidação! Soma bruta (R$ {soma_bruta}) != Soma consolidada (R$ {soma_consolidada:.2f})')
+                
 
             # ===== SALVAR RESULTADOS NO SESSION STATE =====
             st.session_state['resultados_calculados'] = True
@@ -620,89 +806,89 @@ if uploaded_file is not None:
         st.markdown('---')
 
         # ===== DETALHAMENTO POR BOT =====
-        st.subheader('📝 Detalhamento por Bot')
+        st.subheader('📝 Detalhamento por ID')
+        with st.expander('🔍 Visualizar os detalhes de cada ID:', expanded=False):
+            for bot_id, resultado in resultados_por_bot.items():
+                bot_nome = resultado['bot_nome']
+                valor_disponivel = resultado['valor_disponivel']
+                total_ressarcido = resultado['total_ressarcido']
+                vitimas = resultado['vitimas']
+                mensagem = resultado['mensagem']
 
-        for bot_id, resultado in resultados_por_bot.items():
-            bot_nome = resultado['bot_nome']
-            valor_disponivel = resultado['valor_disponivel']
-            total_ressarcido = resultado['total_ressarcido']
-            vitimas = resultado['vitimas']
-            mensagem = resultado['mensagem']
+                # Título do expander com resumo
+                if total_ressarcido > 0:
+                    titulo = f'🤖 {bot_nome} ({bot_id}) | Ressarcido: R$ {total_ressarcido:,.2f} de R$ {valor_disponivel:,.2f}'
+                    expanded = False # Começa fechado
+                else:
+                    titulo = f'⚠️ {bot_nome} ({bot_id}) | {mensagem}'
+                    expanded = False
 
-            # Título do expander com resumo
-            if total_ressarcido > 0:
-                titulo = f'🤖 Bot {bot_nome} ({bot_id}) | Ressarcido: R$ {total_ressarcido:,.2f} de R$ {valor_disponivel:,.2f}'
-                expanded = False # Começa fechado
-            else:
-                titulo = f'⚠️ Bot {bot_nome} ({bot_id}) | {mensagem}'
-                expanded = False
+                with st.expander(titulo, expanded=expanded):
+                    # Métricas do bot
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric('Valor Disponível', f'R$ {valor_disponivel:,.2f}')
+                    with col2:
+                        st.metric('Valor Ressarcido', f'R$ {total_ressarcido:,.2f}')
+                    with col3:
+                        st.metric('Quantidade de Vítimas', len(vitimas))
 
-            with st.expander(titulo, expanded=expanded):
-                # Métricas do bot
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric('Valor Disponível', f'R$ {valor_disponivel:,.2f}')
-                with col2:
-                    st.metric('Valor Ressarcido', f'R$ {total_ressarcido:,.2f}')
-                with col3:
-                    st.metric('Quantidade de Vítimas', len(vitimas))
+                    # Se não tem vítimas, mostrar mensagem e continuar
+                    if len(vitimas) == 0:
+                        st.warning(f'⚠️ {mensagem}')
+                        continue
 
-                # Se não tem vítimas, mostrar mensagem e continuar
-                if len(vitimas) == 0:
-                    st.warning(f'⚠️ {mensagem}')
-                    continue
+                    # Mostrar tabela de vítimas
+                    st.markdown('**Vítimas e Ressarcimentos:**')
 
-                # Mostrar tabela de vítimas
-                st.markdown('**Vítimas e Ressarcimentos:**')
+                    # Preparar tabela para exibição
+                    vitimas_display = vitimas[[
+                        'player_id', 'player_name', 'club_id', 'club_name', 'saldo_liquido', 'ressarcimento', 'status'
+                    ]].copy()
 
-                # Preparar tabela para exibição
-                vitimas_display = vitimas[[
-                    'player_id', 'player_name', 'club_id', 'club_name', 'saldo_liquido', 'ressarcimento', 'status'
-                ]].copy()
+                    vitimas_display.columns = ['ID Jogador', 'Nome', 'Clube ID', 'Nome Clube', 'Perda Líquida', 'Ressarcimento', 'Status']
 
-                vitimas_display.columns = ['ID Jogador', 'Nome', 'Clube ID', 'Nome Clube', 'Perda Líquida', 'Ressarcimento', 'Status']
+                    st.dataframe(
+                        vitimas_display,
+                        hide_index=True,
+                        width='stretch',
+                        column_config={
+                            'ID Jogador': st.column_config.NumberColumn(
+                                'ID Jogador',
+                                width='small'
+                            ),
+                            'Nome': st.column_config.TextColumn(
+                                'Nome',
+                                width='medium'
+                            ),
+                            'Clube ID': st.column_config.NumberColumn(
+                                'Clube ID',
+                                width='small'
+                            ),
+                            'Nome Clube': st.column_config.TextColumn(
+                                'Nome Clube',
+                                width='medium'
+                            ),
+                            'Perda Líquida': st.column_config.NumberColumn(
+                                'Perda Líquida (R$)',
+                                format='R$ %.2f',
+                                width='small'
+                            ),
+                            'Ressarcimento': st.column_config.NumberColumn(
+                                'Ressarcimento (R$)',
+                                format='R$ %.2f',
+                                width='small'
+                            ),
+                            'Status': st.column_config.TextColumn(
+                                'Status',
+                                width='small'
+                            )
+                        }
+                    )
 
-                st.dataframe(
-                    vitimas_display,
-                    hide_index=True,
-                    width='stretch',
-                    column_config={
-                        'ID Jogador': st.column_config.NumberColumn(
-                            'ID Jogador',
-                            width='small'
-                        ),
-                        'Nome': st.column_config.TextColumn(
-                            'Nome',
-                            width='medium'
-                        ),
-                        'Clube ID': st.column_config.NumberColumn(
-                            'Clube ID',
-                            width='small'
-                        ),
-                        'Nome Clube': st.column_config.TextColumn(
-                            'Nome Clube',
-                            width='medium'
-                        ),
-                        'Perda Líquida': st.column_config.NumberColumn(
-                            'Perda Líquida (R$)',
-                            format='R$ %.2f',
-                            width='small'
-                        ),
-                        'Ressarcimento': st.column_config.NumberColumn(
-                            'Ressarcimento (R$)',
-                            format='R$ %.2f',
-                            width='small'
-                        ),
-                        'Status': st.column_config.TextColumn(
-                            'Status',
-                            width='small'
-                        )
-                    }
-                )
-
-                # Botão para baixar Excel deste bot específico
-                # Será implementado
-        st.markdown('---')
+                    # Botão para baixar Excel deste bot específico
+                    # Será implementado
+            st.markdown('---')
 
         # ===== TABELAS CONSOLIDADAS =====
         st.subheader('📊 Ressarcimentos Consolidados')
@@ -730,7 +916,7 @@ if uploaded_file is not None:
                             width='medium',
                             help='Ressarcimento calculado esta semana'
                         ),
-                        'ressarcimento_anterior': st.column_config.NumberColumn(
+                        'acumulado_anterior': st.column_config.NumberColumn(
                             'Acumulado (R$)',
                             format='R$ %.2f',
                             width='medium',
@@ -772,7 +958,7 @@ if uploaded_file is not None:
                             width='medium',
                             help='Ressarcimento calculado esta semana'
                         ),
-                        'ressarcimento_anterior': st.column_config.NumberColumn(
+                        'acumulado_anterior': st.column_config.NumberColumn(
                             'Acumulado (R$)',
                             format='R$ %.2f',
                             width='medium',
