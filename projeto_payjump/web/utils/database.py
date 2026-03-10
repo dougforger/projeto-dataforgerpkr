@@ -68,14 +68,14 @@ class HistoricoRessarcimento(Base):
     club_id = Column(Integer, index=True)
     club_name = Column(String(200))
     valor_ressarcido = Column(Float, nullable=False)
-    tipo = Column(String(50)) # 'Imediato' ou 'Acumulado'
+    status = Column(String(50)) # 'Imediato' ou 'Acumulado'
     referencia = Column(String(200)) # Ex: 'Semana 10/03'
     created_at = Column(DateTime, default=datetime.now, nullable=False)
 
     def __repr__(self):
         return f'<Ressarcimento {self.player_id}: R$ {self.valor_ressarcido:.2f} - Protocolo: {self.protocolo}>'
     
-class Acumulados(Base):
+class Acumulado(Base):
     '''
     Ressarcimentos pendentes (abaixo do valor mínimo definido)
 
@@ -202,7 +202,7 @@ def adicionar_fraudadores_lote(fraudadores):
                 player_name = f['player_name'],
                 club_id = f['club_id'],
                 club_name = f['club_name'],
-                data_identificacao = datetime.now().date()
+                data_identificacao = datetime.now().date(),
                 protocolo = f['protocolo'],
                 valor_total_retido = f['valor_total_retido']
             )
@@ -239,5 +239,333 @@ def remover_fraudador(player_id):
         session.rollback()
         print(f'Erro ao remover fraudador: {e}')
         return False
+    finally:
+        session.close()
+
+# ===== FUNÇÕES DE ACESSO - HISTÓRICO DE RESSARCIMENTOS =====
+
+def salvar_ressarcimento(player_id, player_name, club_id, club_name, valor_ressarcido, status, protocolo, referencia):
+    '''
+    Salva um ressarcimento no histórico.
+
+    Args:
+       player_id (int): ID do jogador
+       player_name (str): Nome do jogador
+       club_id (int): ID do clube
+       club_name (str): Nome do clube
+       valor_ressarcido (float): Valor ressarcido em reais
+       status (str): 'Imediato' ou 'Acumulado'
+       protocolo (int): Número do protocolo no Pipefy
+       referencia (str): Referência do período (ex: 'Semana 10/03')
+
+    Returns:
+        bool: True se sucesso
+    '''
+    session = Session()
+    try:
+        ressarcimento = HistoricoRessarcimento(
+            data_ressarcimento = datetime.now().date(),
+            player_id = player_id,
+            player_name = player_name,
+            club_id = club_id,
+            club_name = club_name,
+            valor_ressarcido = valor_ressarcido,
+            status = status,
+            protocolo = protocolo,
+            referencia = referencia
+        )
+        session.add(ressarcimento)
+        session.commit()
+        return True
+    except Exception as e:
+        session.rollback()
+        print(f'Erro ao salvar ressarcimento: {e}')
+        return False
+    finally:
+        session.close()
+
+def salvar_ressarcimentos_lote(ressarcimentos, protocolo, referencia):
+    '''
+    Salva múltiplos ressarcimentos de uma vez.
+
+    Args:
+        ressarcimentos (list[dict]): Lista de dicionários com dados dos ressarcimentos
+            Cada dict deve ter: player_id, player_name, club_id, club_name, valor_ressarcido, status
+        protocolo (int): Número do protocolo do Pipefy
+        referência (str): Referência do período
+
+    Returns:
+        int: Quantidade de ressarcimentos salvos
+    '''
+    session = Session()
+    try:
+        count = 0
+        data_hoje = datetime.now().date()
+
+        for r in ressarcimentos:
+            ressarcimento = HistoricoRessarcimento(
+                data_ressarcimento = datetime.now().date(),
+                player_id = r['player_id'],
+                player_name = r['player_name'],
+                club_id = r['club_id'],
+                club_name = r["club_name"],
+                valor_ressarcido = r['ressarcimento_total'],
+                status = r.get('status', 'Imediato'), # Default: Imediato
+                protocolo = protocolo,
+                referencia = referencia
+            )
+            session.add(ressarcimento)
+            count += 1
+        
+        session.commit()
+        return count
+    except Exception as e:
+        session.rollback()
+        print(f'Erro ao salvar ressarcimentos em lote: {e}')
+        return 0
+    finally:
+        session.close()
+
+def get_historico_completo():
+    '''
+    Retorna todo o histórico de ressarcimentos.
+
+    Returns:
+        list[dict]: Lista de todos os ressarcimentos
+    '''
+    session = Session()
+    try:
+        historico = session.query(HistoricoRessarcimento).order_by(
+            HistoricoRessarcimento.data_ressarcimento.desc()
+        ).all()
+
+        return [{
+            'id': h.id,
+            'protocolo': h.protocolo,
+            'data_ressarcimento': h.data_ressarcimento,
+            'player_id': h.player_id,
+            'player_name': h.player_name,
+            'club_id': h.club_id,
+            'club_name': h.club_name,
+            'valor_ressarcido': h.valor_ressarcido,
+            'status': h.status,
+            'referencia': h.referencia,
+            'created_at': h.created_at
+        } for h in historico]
+    finally:
+        session.close()
+
+def get_historico_por_periodo(data_inicio, data_fim):
+    '''
+    Retorna histórico filtrado por período.
+
+    Args:
+        data_inicio (date): Data inicial
+        data_fim (date): Data final
+
+    Returns:
+        list[dict]: Ressarcimentos no período
+    '''
+    session = Session()
+    try:
+        historico = session.query(HistoricoRessarcimento).filter(
+            HistoricoRessarcimento.data_ressarcimento.between(data_inicio, data_fim)
+        ).order_by(HistoricoRessarcimento.data_ressarcimento.desc()).all()
+
+        return [{
+            'id': h.id,
+            'protocolo': h.protocolo,
+            'data_ressarcimento': h.data_ressarcimento,
+            'player_id': h.player_id,
+            'player_name': h.player_name,
+            'club_id': h.club_id,
+            'club_name': h.club_name,
+            'valor_ressarcido': h.valor_ressarcido,
+            'status': h.status,
+            'referencia': h.referencia,
+            'created_at': h.created_at
+        } for h in historico]
+    finally:
+        session.close()
+
+def get_historico_por_protocolo(protocolo):
+    '''
+    Retorna todos os ressarcimentos de um protocolo específico.
+    
+    Args:
+        protocolo (int): Número do protocolo (ex: 123456789)
+        
+    Returns:
+        list[dict]: Ressarcimentos deste protocolo
+    '''
+    session = Session()
+    try:
+        historico = session.query(HistoricoRessarcimento).filter_by(
+            protocolo = protocolo
+        ).order_by(HistoricoRessarcimento.protocolo.desc()).all()
+
+        return [{
+            'id': h.id,
+            'protocolo': h.protocolo,
+            'data_ressarcimento': h.data_ressarcimento,
+            'player_id': h.player_id,
+            'player_name': h.player_name,
+            'club_id': h.club_id,
+            'club_name': h.club_name,
+            'valor_ressarcido': h.valor_ressarcido,
+            'status': h.status,
+            'referencia': h.referencia,
+            'created_at': h.created_at
+        } for h in historico]
+    finally:
+        session.close()
+
+def get_estatisticas_historico():
+    '''
+    Retorna estatísticas gerais do histórico.
+    
+    Returns:
+        dict: Estatísticas agregadas
+    '''
+    session = Session()
+    try:
+        from sqlalchemy import func
+
+        stats = session.query(
+            func.count(HistoricoRessarcimento.id).label('total_ressarcimentos'),
+            func.sum(HistoricoRessarcimento.valor_ressarcido).label('valor_total'),
+            func.count(func.distinct(HistoricoRessarcimento.player_id)).label('jogadores_unicos'),
+            func.count(func.distinct(HistoricoRessarcimento.club_id)).label('clubes_unicos'),
+            func.count(func.distinct(HistoricoRessarcimento.protocolo)).label('protocolos_unicos')
+        ).first()
+
+        return {
+            'total_ressarcimentos': stats.total_ressarcimentos or 0,
+            'valor_total': stats.valor_total or 0.0,
+            'jogadores_unicos': stats.jogadores_unicos or 0,
+            'clubes_unicos': stats.clubes_unicos or 0,
+            'protocolos_unicos': stats.protocolos_unicos or 0
+        }
+    finally:
+        session.close()
+
+# ===== FUNÇOES DE ACESSO - ACUMULADOS =====
+
+def get_acumulados():
+    '''
+    Retorna todos os acumulados pendentes.
+    
+    Returns:
+        list[dict]: Lista de acumulados
+    '''
+    session = Session()
+    try:
+        acumulados = session.query(Acumulado).order_by(
+            Acumulado.ressarcimento_acumulado.desc()
+        ).all()
+
+        return [{
+            'player_id': a.player_id,
+            'player_name': a.player_name,
+            'club_id': a.club_id,
+            'club_name': a.club_name,
+            'ressarcimento_acumulado': a.ressarcimento_acumulado,
+            'data_ultima_atualizacao': a.data_ultima_atualizacao
+        } for a in acumulados]
+    finally:
+        session.close()
+
+def atualizar_acumulados(acumulados_novos):
+    '''
+    Substitui TODOS os acumulados pelos novos.
+    
+    Remove todos os acumulados antigos e insere os novos.
+    Usado após cada cálculo de ressarcimento.
+    
+    Args:
+        acumulados_novos (list[dict]): Lista de novos acumulados
+            Cada dict deve ter: player_id, club_id, player_name, club_name, ressarcimento_total
+            
+    Returns:
+        int: Quantidade de acumulados salvos
+    '''
+    session = Session()
+    try:
+        # Limpar todos os acumulados antigos
+        session.query(Acumulado).delete()
+
+        # Inserir novos acumulados
+        count = 0
+        data_hoje = datetime.now().date()
+
+        for a in acumulados_novos:
+            acumulado = Acumulado(
+                player_id = a['player_id'],
+                player_name = a['player_name'],
+                club_id = a['club_id'],
+                club_name = a['club_name'],
+                ressarcimento_acumulado = a['ressarcimento_total'],
+                data_ultima_atualizacao = data_hoje
+            )
+            session.add(acumulado)
+            count += 1
+
+        session.commit()
+        return count
+    except Exception as e:
+        session.rollback()
+        print(f'Erro ao atualizar o acumulado: {e}')
+        return 0
+    finally:
+        session.close()
+
+def limpar_acumulados():
+    '''
+    Remove TODOS os acumulados do banco.
+    
+    Útil para reset ou limpeza.
+    
+    Returns:
+        int: Quantidade de acumulados removidos
+    '''
+    session = Session()
+    try:
+        count = session.query(Acumulado).count()
+        session.query(Acumulado).delete()
+        session.commit()
+        return count
+    except Exception as e:
+        session.rollback()
+        print(f'Erro ao limpar acumulados: {e}')
+        return 0
+    finally:
+        session.close()
+
+def get_estatisticas_acumulados():
+    '''
+    Retorna estatísticas dos acumulados pendentes.
+    
+    Returns:
+        dict: Estatísticas agregadas
+    '''
+    session = Session()
+    try:
+        from sqlalchemy import func
+
+        stats = session.query(
+            func.count(Acumulado.id).label('total_acumulados'),
+            func.sum(Acumulado.ressarcimento_acumulado).label('valor_total_acumulado'),
+            func.avg(Acumulado.ressarcimento_acumulado).label('valor_medio'),
+            func.min(Acumulado.ressarcimento_acumulado).label('valor_minimo'),
+            func.max(Acumulado.ressarcimento_acumulado).label('valor_maximo')
+        ).first()
+
+        return {
+            'total_acumulados': stats.total_acumulados or 0,
+            'valor_total_acumulado': stats.valor_total_acumulado or 0,
+            'valor_medio': stats.valor_medio or 0,
+            'valor_minimo': stats.valor_minimo or 0,
+            'valor_maximo': stats.valor_maximo or 0
+        }
     finally:
         session.close()
