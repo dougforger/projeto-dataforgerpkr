@@ -109,3 +109,135 @@ def incializar_banco():
 
 # Inicialização automática ao importat o módulo
 incializar_banco()
+
+# ===== FUNÇÕES DE ACESSO - FRAUDADORES =====
+def get_ids_fraudadores():
+    '''
+    Retorna lista de IDs de fraudadores conhecidos.
+
+    Returns:
+        list: Lista de player_ids que são fraudadores
+    '''
+    session = Session()
+    try:
+        fraudadores = session.query(FraudadorIdentificado.player_id).all()
+        return [f[0] for f in fraudadores]
+    finally:
+        session.close()
+
+def get_fraudadores_completo():
+    '''
+    Retorna todos os dados dos fraudadores identificados.
+
+    Returns:
+        list[dict]: Lista de dicionários com dados completos
+    '''
+    session = Session()
+    try:
+        fraudadores = session.query(FraudadorIdentificado).all()
+        return [{
+            'id': f.id,
+            'player_id': f.player_id,
+            'player_name': f.player_name,
+            'club_id': f.club_id,
+            'club_name': f.club_name,
+            'data_identificacao': f.data_identificacao,
+            'protocolo': f.protocolo,
+            'valor_total_retido': f.valor_total_retido
+        } for f in fraudadores]
+    finally:
+        session.close()
+
+def adicionar_fraudador(player_id, player_name, club_id, club_name, protocolo, valor_retido):
+    '''
+    Adiciona ou atualiza um fraudador na lista.
+
+    Args:
+        player_id (int): ID do jogador
+        player_name (str): Nome do jogador
+        club_id (int): ID do clube
+        club_name (str): Nome do clube
+        protocolo (int): Número do protocolo do Pipefy (ex: 123456789)
+        valor_retido (float): Valor total retido
+
+    Returns:
+        bool: True se sucesso
+    '''
+    session = Session()
+    try:
+        fraudador = FraudadorIdentificado(
+            player_id = player_id,
+            player_name = player_name,
+            club_id = club_id,
+            club_name = club_name,
+            protocolo = protocolo,
+            valor_total_retido = valor_retido
+        )
+        session.merge(fraudador) # merge = INSERT ou UPDATE se já existir
+        session.commit()
+        return True
+    except Exception as e:
+        session.rollback()
+        print(f'Erro ao adicionar o fraudador: {e}')
+        return False
+    finally:
+        session.close()
+
+def adicionar_fraudadores_lote(fraudadores):
+    '''
+    Adiciona múltiplos fraudadores de uma vez.
+
+    Args:
+        fraudadores (list[dict]): Lista de dicionários com dados dos fraudadores
+
+    Returns:
+        int: Quantidade de fraudadores adicionados
+    '''
+    session = Session()
+    try:
+        count = 0
+        for f in fraudadores:
+            fraudador = FraudadorIdentificado(
+                player_id = f['player_id'],
+                player_name = f['player_name'],
+                club_id = f['club_id'],
+                club_name = f['club_name'],
+                data_identificacao = datetime.now().date()
+                protocolo = f['protocolo'],
+                valor_total_retido = f['valor_total_retido']
+            )
+            session.merge(fraudador)
+            count += 1
+        session.commit()
+        return count
+    except Exception as e:
+        session.rollback()
+        print(f'Erro ao adicionar fraudadores em lote: {e}')
+        return 0
+    finally:
+        session.close()
+
+def remover_fraudador(player_id):
+    '''
+    Remove um fraudador da lista.
+
+    Args:
+        player_id (int): ID do jogador a remover
+
+    Returns:
+        bool: True se removido, False se não encontrado
+    '''
+    session = Session()
+    try:
+        fraudador = session.query(FraudadorIdentificado).filter_by(player_id=player_id).first()
+        if fraudador:
+            session.delete(fraudador)
+            session.commit()
+            return True
+        return False
+    except Exception as e:
+        session.rollback()
+        print(f'Erro ao remover fraudador: {e}')
+        return False
+    finally:
+        session.close()
