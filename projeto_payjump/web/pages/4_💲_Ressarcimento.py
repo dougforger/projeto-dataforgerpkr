@@ -208,11 +208,12 @@ if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
     
     # Validação das colunas necessárias
-    colunas_necessarais = ['PLAYER_ID', 'PLAYER_NAME', 'CLUB_ID', 'UNION_ID', 'HAND_ID', 'GANHOS_REAIS', 'IS_BOT']
-    colunas_faltando = [col for col in colunas_necessarais if col not in df.columns]
-    
+    colunas_necessarias = ['PLAYER_ID', 'PLAYER_NAME', 'CLUB_ID', 'UNION_ID', 'HAND_ID', 'GANHOS_REAIS', 'IS_BOT']
+    colunas_faltando = [col for col in colunas_necessarias if col not in df.columns]
+
     if colunas_faltando:
-        st.error(f'❌ Colunas faltando no arquivo: {', '.join(colunas_faltando)}')
+        st.error(f'❌ Colunas faltando no arquivo: {", ".join(colunas_faltando)}')
+        st.info(f'ℹ️ Colunas esperadas: {", ".join(colunas_necessarias)}')
         st.stop()
     
     st.success(f'✅ Arquivo carregado com sucesso! {len(df)} linhas encontradas.')
