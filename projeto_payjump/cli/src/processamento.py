@@ -18,16 +18,16 @@ def adicionar_clube_name(df):
 
     # Garante que o tipo de Club ID seja o mesmo nos dois df's
     df['Club ID'] = df['Club ID'].astype(int)
-    df_clubes['id-clube'] = df_clubes['id-clube'].astype(int)
+    df_clubes['clube_id'] = df_clubes['clube_id'].astype(int)
 
     # Merge
-    df = df.merge(df_clubes[['id-clube', 'nome-clube']], left_on='Club ID', right_on='id-clube', how='left')
+    df = df.merge(df_clubes[['clube_id', 'clube_nome']], left_on='Club ID', right_on='clube_id', how='left')
 
     # Reordena as colunas para que Club Name fique à esquerda de Club ID
-    df = df[['Player ID', 'Name', 'Club ID', 'nome-clube', 'Union ID', 'Rank', 'prize']]
-    
+    df = df[['Player ID', 'Name', 'Club ID', 'clube_nome', 'Union ID', 'Rank', 'prize']]
+
     # Avisa se houver clubes sem nome na lista
-    clubes_novos = df[df['nome-clube'].isna()]['Club ID'].unique()
+    clubes_novos = df[df['clube_nome'].isna()]['Club ID'].unique()
     if len(clubes_novos) > 0:
             print("Clubes sem nome cadastrado: ", clubes_novos)
     

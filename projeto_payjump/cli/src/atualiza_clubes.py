@@ -16,32 +16,32 @@ def atualizar_clubes():
     if lista_clubes is None:
         print("❌ Erro ao carregar arquivo de clubes")
         return
-    
+
     lista_ligas = pd.read_csv(DATA_DIR / "ligas.csv")
-    ligas = lista_ligas['id-liga'].unique().tolist()
-    
+    ligas = lista_ligas['liga_id'].unique().tolist()
+
     ## Filtra os clubes de acordo com as ligas cadastradas.
     clubes = lista_clubes[lista_clubes['Union ID'].isin(ligas)]
-    
+
     ## Seleciona as colunas desejadas e as renomeia.
     clubes = clubes[['Name', 'Club ID', 'Union ID']].rename(columns={
-        'Club ID': 'id-clube',
-        'Name': 'nome-clube',
-        'Union ID': 'id-liga'})
-    
+        'Club ID': 'clube_id',
+        'Name': 'clube_nome',
+        'Union ID': 'liga_id'})
+
     ## Converte os tipos para garantir compatibilidade.
-    clubes['nome-clube'] = clubes['nome-clube'].astype(str)
-    clubes['id-clube'] = clubes['id-clube'].astype(int)
-    clubes['id-liga'] = clubes['id-liga'].astype(int)
+    clubes['clube_nome'] = clubes['clube_nome'].astype(str)
+    clubes['clube_id'] = clubes['clube_id'].astype(int)
+    clubes['liga_id'] = clubes['liga_id'].astype(int)
 
     ## Adicona o nome da liga.
-    clubes = clubes.merge(lista_ligas[['id-liga', 'nome-liga']], on='id-liga', how='left')
-    
+    clubes = clubes.merge(lista_ligas[['liga_id', 'liga_nome']], on='liga_id', how='left')
+
     ## Reordena as colunas.
-    clubes = clubes[['id-clube', 'nome-clube', 'id-liga', 'nome-liga']]
+    clubes = clubes[['clube_id', 'clube_nome', 'liga_id', 'liga_nome']]
 
     ## Remove duplicados caso existam
-    clubes = clubes.drop_duplicates(subset=['id-clube'])
+    clubes = clubes.drop_duplicates(subset=['clube_id'])
 
     ## Salva o novo arquivo clubes.csv
     clubes.to_csv(DATA_DIR / "clubes.csv", index=False, encoding='utf-8-sig')

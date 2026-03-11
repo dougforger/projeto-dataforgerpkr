@@ -1,4 +1,4 @@
-﻿id-liga,nome-liga,idioma,handicap,moeda,taxa-liga
+﻿liga_id,liga_nome,idioma,handicap,moeda,taxa-liga
 106,Suprema,português,5.0,BRL,0.18
 107,Liga Principal,português,5.0,BRL,0.12
 111,Suprema EU,inglês,0.8,USD,0.2

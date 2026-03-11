@@ -1,4 +1,4 @@
-# projeto_payjump/web/pages/2_💲_Ressarcimento.py
+# projeto_payjump/web/pages/4_💲_Ressarcimento.py
 import math
 import streamlit as st
 import pandas as pd
@@ -38,13 +38,13 @@ st.subheader('📂 Upload do Arquivo Exportado')
 uploaded_file = st.file_uploader(
     'Selecione o arquivo CSV exportado do Snowflake',
     type=['csv'],
-    help='Arquivo gerado pela query de análise de bots do Snowflake.'
+    help='Arquivo gerado pela query de análise de fraudadores do Snowflake.'
 )
 
-def calcular_saldo_por_bot(df, id_fraudador, df_clubes, ids_fraudadores = []):
+def calcular_saldo_por_fraudador(df, id_fraudador, df_clubes, ids_fraudadores = []):
     """
     Calcula o saldo líquido de cada jogador (não fraudador) contra um fraudador específico.
-    
+
     Args:
         df (DataFrame): DataFrame completo com todas as mãos
         id_fraudador (int): ID do fraudador para analisar
@@ -52,38 +52,36 @@ def calcular_saldo_por_bot(df, id_fraudador, df_clubes, ids_fraudadores = []):
         ids_fraudadores (list): Lista de IDs de fraudadores a excluir do cálculo do ressarcimento
 
     Returns:
-        DataFrame com colunas: player_id, player_name, club_id, club_name , saldo_liquido
+        DataFrame com colunas: jogador_id, jogador_nome, clube_id, clube_nome, saldo_liquido
     """
     # Filtrar apenas as mãos onde o fraudador estava presente
-    maos_fraudador = df[df['HAND_ID'].isin(
-        df[df['PLAYER_ID'] == id_fraudador]['HAND_ID']
+    maos_fraudador = df[df['MAO_ID'].isin(
+        df[df['JOGADOR_ID'] == id_fraudador]['MAO_ID']
     )]
 
     # Filtrar apenas jogadores não fraudadores nessas mãos
-    jogadores = maos_fraudador[maos_fraudador['IS_BOT'] == False]
+    jogadores = maos_fraudador[maos_fraudador['FRAUDADOR'] == False]
 
     # ===== FILTRAR FRAUDADORES ANTES DE CALCULAR =====
     if len(ids_fraudadores) > 0:
-        jogadores = jogadores[~jogadores['PLAYER_ID'].isin(ids_fraudadores)]
+        jogadores = jogadores[~jogadores['JOGADOR_ID'].isin(ids_fraudadores)]
 
     # Calcular saldo líquido de cada jogador
-    saldos = jogadores.groupby(['PLAYER_ID', 'PLAYER_NAME', 'CLUB_ID']).agg({
+    saldos = jogadores.groupby(['JOGADOR_ID', 'JOGADOR_NOME', 'CLUBE_ID']).agg({
         'GANHOS_REAIS': 'sum'
     }).reset_index()
 
-    saldos.columns = ['player_id', 'player_name', 'club_id', 'saldo_liquido']
+    saldos.columns = ['jogador_id', 'jogador_nome', 'clube_id', 'saldo_liquido']
 
     # Adicionar nome do clube
     saldos = saldos.merge(
-        df_clubes[['id-clube', 'nome-clube']],
-        left_on='club_id',
-        right_on='id-clube',
+        df_clubes[['clube_id', 'clube_nome']],
+        on='clube_id',
         how='left'
     )
 
     # Reorganizar colunas
-    saldos = saldos[['player_id', 'player_name', 'club_id', 'nome-clube', 'saldo_liquido']]
-    saldos.columns = ['player_id', 'player_name', 'club_id', 'club_name', 'saldo_liquido']
+    saldos = saldos[['jogador_id', 'jogador_nome', 'clube_id', 'clube_nome', 'saldo_liquido']]
 
     # Filtrar apenas quem teve saldo negativo (perdeu)
     vitimas = saldos[saldos['saldo_liquido'] < 0].copy()
@@ -92,12 +90,12 @@ def calcular_saldo_por_bot(df, id_fraudador, df_clubes, ids_fraudadores = []):
 
 def distribuir_ressarcimento(vitimas, valor_disponivel):
     """
-    Distribui o valor retido do bot proporcionalmente entre as vítimas.
-    
+    Distribui o valor retido do fraudador proporcionalmente entre as vítimas.
+
     Args:
-        vitimas: DataFrame com player_id, player_name, club_id, saldo_liquido
+        vitimas: DataFrame com jogador_id, jogador_nome, clube_id, saldo_liquido
         valor_disponivel: Valor total disponível para ressarcir (em reais)
-        
+
     Returns:
         DataFrame com coluna adicional: ressarcimento
     """
@@ -126,7 +124,7 @@ def distribuir_ressarcimento(vitimas, valor_disponivel):
     )
     return vitimas
 
-def criar_excel_ressarcimento(resultados_por_bot, ressarcimentos_imediatos, ressarcimentos_futuros, bots_editado, valor_minimo):
+def criar_excel_ressarcimento(resultados_por_fraudador, ressarcimentos_imediatos, ressarcimentos_futuros, fraudadores_editados, valor_minimo):
     '''
     Cria um arquivo Excel com múltiplas abas contendo todos os dados de ressarcimento
 
@@ -143,8 +141,8 @@ def criar_excel_ressarcimento(resultados_por_bot, ressarcimentos_imediatos, ress
         # ===== ABA 1: RESUMO GERAL =====
         dados_resumo = {
             'Métrica': [
-                'Total de Bots Analisados',
-                'Bots com Valor Retido',
+                'Total de Fraudadores Analisados',
+                'Fraudadores com Valor Retido',
                 'Total Disponível para Ressarcimento',
                 'Total de Ressarcimentos Imediatos',
                 'Total de Ressarcimentos Futuros',
@@ -153,9 +151,9 @@ def criar_excel_ressarcimento(resultados_por_bot, ressarcimentos_imediatos, ress
                 'Valor Mínimo Configurado'
             ],
             'Valor': [
-                len(bots_editado),
-                len([r for r in resultados_por_bot.values() if r['total_ressarcido'] > 0]),
-                f'R$ {sum([r['valor_disponivel'] for r in resultados_por_bot.values()]):,.2f}',
+                len(fraudadores_editados),
+                len([r for r in resultados_por_fraudador.values() if r['total_ressarcido'] > 0]),
+                f'R$ {sum([r['valor_disponivel'] for r in resultados_por_fraudador.values()]):,.2f}',
                 f'R$ {sum([r['ressarcimento_total'] for r in ressarcimentos_imediatos]):,.2f}' if len(ressarcimentos_imediatos) > 0 else 'R$ 0.00',
                 f'R$ {sum([r['ressarcimento_total'] for r in ressarcimentos_futuros]):,.2f}' if len(ressarcimentos_futuros) > 0 else 'R$ 0.00',
                 len(ressarcimentos_imediatos),
@@ -169,36 +167,36 @@ def criar_excel_ressarcimento(resultados_por_bot, ressarcimentos_imediatos, ress
         # ===== ABA 2: RESSARCIMENTOS IMEDIATOS =====
         if len(ressarcimentos_imediatos) > 0:
             df_imediatos = pd.DataFrame(ressarcimentos_imediatos)
-            df_imediatos = df_imediatos[['player_id', 'player_name', 'club_id', 'club_name', 'ressarcimento_novo', 'acumulado_anterior', 'ressarcimento_total']]
+            df_imediatos = df_imediatos[['jogador_id', 'jogador_nome', 'clube_id', 'clube_nome', 'ressarcimento_novo', 'acumulado_anterior', 'ressarcimento_total']]
             df_imediatos.columns = ['ID Jogador', 'Nome Jogador', 'ID Clube', 'Nome Clube', 'Ressarcimento Novo (R$)', 'Acumulado Anterior (R$)', 'Total (R$)']
             df_imediatos.to_excel(writer, sheet_name='Ressarcimentos Imediatos', index=False)
 
         # ===== ABA 3: RESSARCIMENTOS FUTUROS =====
         if len(ressarcimentos_futuros) > 0:
             df_futuros = pd.DataFrame(ressarcimentos_futuros)
-            df_futuros = df_futuros[['player_id', 'player_name', 'club_id', 'club_name', 'ressarcimento_novo', 'acumulado_anterior', 'ressarcimento_total']]
+            df_futuros = df_futuros[['jogador_id', 'jogador_nome', 'clube_id', 'clube_nome', 'ressarcimento_novo', 'acumulado_anterior', 'ressarcimento_total']]
             df_futuros.columns = ['ID Jogador', 'Nome Jogador', 'ID Clube', 'Nome Clube', 'Ressarcimento Novo (R$)', 'Acumulado Anterior (R$)', 'Total (R$)']
             df_futuros.to_excel(writer, sheet_name='Ressarcimentos futuros', index=False)
 
-        # ===== ABAS POR BOT =====
-        for bot_id, resultado in resultados_por_bot.items():
+        # ===== ABAS POR FRAUDADOR =====
+        for fraudador_id, resultado in resultados_por_fraudador.items():
             if len(resultado['vitimas']) > 0:
-                bot_nome = resultado['bot_nome']
+                fraudador_nome = resultado['fraudador_nome']
 
                 # Remover caracteres inválidos para nome de aba do Excel
                 # Caracteres proibidos: / \ * ? : [ ]
 
-                bot_nome_limpo = re.sub(r'[/\\*?:\[\]]', '', bot_nome)
-                # Limitar nome da aba a 31 caracteres (limite do Excel
-                sheet_name = f'Bot {bot_nome_limpo} ({bot_id})'[:31]
+                fraudador_nome_limpo = re.sub(r'[/\\*?:\[\]]', '', fraudador_nome)
+                # Limitar nome da aba a 31 caracteres (limite do Excel)
+                sheet_name = f'Fraudador {fraudador_nome_limpo} ({fraudador_id})'[:31]
 
-                df_bot = resultado['vitimas'][[
-                    'player_id', 'player_name', 'club_id', 'club_name', 'saldo_liquido', 'ressarcimento', 'status'
+                df_fraudador = resultado['vitimas'][[
+                    'jogador_id', 'jogador_nome', 'clube_id', 'clube_nome', 'saldo_liquido', 'ressarcimento', 'status'
                 ]].copy()
 
-                df_bot.columns = ['ID Jogador', 'Nome Jogador', 'ID Clube', 'Nome Clube', 'Perda Líquida (R$)', 'Ressarcimento Novo (R$)', 'Status']
+                df_fraudador.columns = ['ID Jogador', 'Nome Jogador', 'ID Clube', 'Nome Clube', 'Perda Líquida (R$)', 'Ressarcimento Novo (R$)', 'Status']
 
-                df_bot.to_excel(writer, sheet_name=sheet_name, index=False)
+                df_fraudador.to_excel(writer, sheet_name=sheet_name, index=False)
 
     output.seek(0)
     return output.getvalue()
@@ -208,7 +206,8 @@ if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
     
     # Validação das colunas necessárias
-    colunas_necessarias = ['PLAYER_ID', 'PLAYER_NAME', 'CLUB_ID', 'UNION_ID', 'HAND_ID', 'GANHOS_REAIS', 'IS_BOT']
+    # colunas_necessarias = ['PLAYER_ID', 'PLAYER_NAME', 'CLUB_ID', 'UNION_ID', 'HAND_ID', 'GANHOS_REAIS', 'IS_FRAUDADOR']
+    colunas_necessarias = ['JOGADOR_ID','JOGADOR_NOME','CLUBE_ID','LIGA_ID','MESA_ID','MAO_ID','GANHOS_REAIS','FRAUDADOR']
     colunas_faltando = [col for col in colunas_necessarias if col not in df.columns]
 
     if colunas_faltando:
@@ -238,17 +237,17 @@ if uploaded_file is not None:
 
             # Mostrar lista de fraudadores
             with st.expander('👀 Ver a Lista de Fraudadores'):
-                df_fraudadores = pd.DataFrame(get_fraudadores_completo())
+                df_fraudadores_lista = pd.DataFrame(get_fraudadores_completo())
                 st.dataframe(
-                    df_fraudadores,
+                    df_fraudadores_lista,
                     hide_index=True,
                     width='stretch',
                     column_config={
-                        'player_id': 'ID Jogador',
-                        'player_name': 'Nome Jogador',
-                        'club_id': 'ID Clube',
-                        'club_name': 'Nome Clube',
-                        'data_identificação': 'Data Identificação',
+                        'jogador_id': 'ID Jogador',
+                        'jogador_nome': 'Nome Jogador',
+                        'clube_id': 'ID Clube',
+                        'clube_nome': 'Nome Clube',
+                        'data_identificacao': 'Data Identificação',
                         'protocolo': 'Protocolo',
                         'valor_total_retido': st.column_config.NumberColumn(
                             'Valor Retido (R$)',
@@ -280,10 +279,10 @@ if uploaded_file is not None:
                     hide_index=True,
                     width='stretch',
                     column_config={
-                        'player_id': 'ID Jogador',
-                        'player_name': 'Nome Jogador',
-                        'club_id': 'ID Clube',
-                        'club_name': 'Nome Clube',
+                        'jogador_id': 'ID Jogador',
+                        'jogador_nome': 'Nome Jogador',
+                        'clube_id': 'ID Clube',
+                        'clube_nome': 'Nome Clube',
                         'ressarcimento_acumulado': st.column_config.NumberColumn(
                             'Acumulado (R$)',
                             format='%.2f'
@@ -294,7 +293,7 @@ if uploaded_file is not None:
         else:
             # DataFrame vazio para não quebrar o código
             df_acumulados_antigos = pd.DataFrame(columns=[
-                'player_id', 'player_name', 'club_id', 'club_name', 'ressarcimento_acumulado', 'data_ultima_atualizacao'
+                'jogador_id', 'jogador_nome', 'clube_id', 'clube_nome', 'ressarcimento_acumulado', 'data_ultima_atualizacao'
             ])
             st.info('ℹ️ Nenhum acumulado pendente.')
     
@@ -307,70 +306,67 @@ if uploaded_file is not None:
     df_clubes = pd.read_csv(DATA_DIR / 'clubes.csv')
     df_ligas = pd.read_csv(DATA_DIR / 'ligas.csv')
 
-    # ===== IDENTIFICADO DOS BOTS =====
-    st.subheader('⚙️ Configuração dos Valores Máximos por Bot')
-    
-    # Filtrar apenas os bots, pegar 
-    # df_bots = df[df['IS_BOT'] == True].groupby(['PLAYER_ID', 'PLAYER_NAME']).agg({
-    #     'GANHOS_REAIS': 'sum'
-    # }).reset_index()
-    df_bots = df[df['IS_BOT'] == True].groupby('PLAYER_ID').agg({
-        'PLAYER_NAME': 'first',
-        'CLUB_ID': lambda x: x.mode()[0] if len(x.mode()) > 0 else x.iloc[0],
-        'UNION_ID': lambda x: x.mode()[0] if len(x.mode()) > 0 else x.iloc[0]
+    # ===== IDENTIFICAÇÃO DOS FRAUDADORES =====
+    st.subheader('⚙️ Configuração dos Valores Máximos por Fraudador')
+
+    # Filtrar apenas os fraudadores
+    df_fraudadores = df[df['FRAUDADOR'] == True].groupby('JOGADOR_ID').agg({
+        'JOGADOR_NOME': 'first',
+        'CLUBE_ID': lambda x: x.mode()[0] if len(x.mode()) > 0 else x.iloc[0],
+        'LIGA_ID': lambda x: x.mode()[0] if len(x.mode()) > 0 else x.iloc[0]
     }).reset_index()
 
     # Merge com os clubes
-    df_bots = df_bots.merge(
-        df_clubes[['id-clube', 'nome-clube']],
-        left_on='CLUB_ID',
-        right_on='id-clube',
+    df_fraudadores = df_fraudadores.merge(
+        df_clubes[['clube_id', 'clube_nome']],
+        left_on='CLUBE_ID',
+        right_on='clube_id',
         how='left'
     )
 
     # Merge com as ligas
-    df_bots = df_bots.merge(
-        df_ligas[['id-liga', 'nome-liga', 'moeda', 'handicap', 'taxa-liga']],
-        left_on='UNION_ID',
-        right_on='id-liga',
+    df_fraudadores = df_fraudadores.merge(
+        df_ligas[['liga_id', 'liga_nome', 'moeda', 'handicap', 'taxa-liga']],
+        left_on='LIGA_ID',
+        right_on='liga_id',
         how='left'
     )
 
     # Limpar e renomear colunas
-    df_bots = df_bots[[
-        'PLAYER_ID', 'PLAYER_NAME', 'CLUB_ID', 'nome-clube', 'UNION_ID', 'nome-liga', 'moeda', 'handicap'
+    df_fraudadores = df_fraudadores[[
+        'JOGADOR_ID', 'JOGADOR_NOME', 'clube_id', 'clube_nome', 'liga_id', 'liga_nome', 'moeda', 'handicap'
     ]]
-    df_bots.columns = [
-        'id_bot', 'nome_bot', 'clube_id', 'nome_clube', 'liga_id', 'nome_liga', 'moeda', 'handicap'
+    df_fraudadores.columns = [
+        'fraudador_id', 'fraudador_nome', 'clube_id', 'nome_clube', 'liga_id', 'nome_liga', 'moeda', 'handicap'
     ]
-    df_bots = df_bots.sort_values('id_bot')
+    df_fraudadores = df_fraudadores.sort_values('fraudador_id')
 
     # Adicionar coluna editável para valor retido
-    df_bots['valor_retido'] = 0.0
-    df_bots['rake_retido'] = 0.0
+    df_fraudadores['valor_retido'] = 0.0
+    df_fraudadores['rake_retido'] = 0.0
 
-    # Verificar se há bots em múltiplas ligas
-    bots_multiplas_ligas = df[df['IS_BOT'] == True].groupby('PLAYER_ID')['UNION_ID'].nunique()
-    bots_multiplas_ligas = bots_multiplas_ligas[bots_multiplas_ligas > 1]
+    # Verificar se há fraudadores em múltiplas ligas
+    fraudadores_multiplas_ligas = df[df['FRAUDADOR'] == True].groupby('JOGADOR_ID')['LIGA_ID'].nunique()
+    fraudadores_multiplas_ligas = fraudadores_multiplas_ligas[fraudadores_multiplas_ligas > 1]
 
-    if len(bots_multiplas_ligas) > 0:
-        st.warning(f'⚠️ {len(bots_multiplas_ligas)} bot(s) jogaram em mais de uma liga. Utilizando a liga mais frequente.')
+    if len(fraudadores_multiplas_ligas) > 0:
+        st.warning(f'⚠️ {len(fraudadores_multiplas_ligas)} fraudador(es) jogaram em mais de uma liga. Utilizando a liga mais frequente.')
 
-    st.info(f'🤖 Encontrados **{len(df_bots)}** bots no arquivo. Insira o valor retido (em moeda local) para cada um:')
+    st.info(f'🚫 Encontrados **{len(df_fraudadores)}** fraudadores no arquivo. Insira o valor retido (em moeda local) para cada um:')
 
     # ===== TABELA EDITÁVEL =====
-    bots_editados = st.data_editor(
-        df_bots,
-        disabled=['id_bot', 'nome_bot', 'clube_id', 'nome_clube', 'liga_id', 'nome_liga', 'moeda', 'handicap'],
+    fraudadores_editados = st.data_editor(
+        df_fraudadores,
+        disabled=['fraudador_id', 'fraudador_nome', 'clube_id', 'nome_clube', 'liga_id', 'nome_liga', 'moeda', 'handicap'],
         hide_index=True,
         width='stretch',
         column_config={
-            'id_bot': st.column_config.NumberColumn(
-                'ID Bot',
+            'fraudador_id': st.column_config.NumberColumn(
+                'ID Fraudador',
                 width='small'
             ),
-            'nome_bot': st.column_config.TextColumn(
-                'Nome Bot',
+            'fraudador_nome': st.column_config.TextColumn(
+                'Nome Fraudador',
                 width='medium'
             ),
             'clube_id': st.column_config.NumberColumn(
@@ -400,7 +396,7 @@ if uploaded_file is not None:
             ),
             'valor_retido': st.column_config.NumberColumn(
                 'Valor Retido (Moeda Local)',
-                help='Valor retido do bot na moeda local referente à liga a qual o clube pertence.',
+                help='Valor retido do fraudador na moeda local referente à liga a qual o clube pertence.',
                 min_value=0.0,
                 format='%.2f',
                 width='medium',
@@ -408,7 +404,7 @@ if uploaded_file is not None:
             ),
             'rake_retido': st.column_config.NumberColumn(
                 'Rake Retido (Moeda Local)',
-                help='Valor do rake gerado pelo bot na moeda local referente à liga a qual o clube pertence.',
+                help='Valor do rake gerado pelo fraudador na moeda local referente à liga a qual o clube pertence.',
                 min_value=0.0,
                 format='%.2f',
                 width='medium',
@@ -419,35 +415,35 @@ if uploaded_file is not None:
     # ===== NORMALIZAR SEPARADORES DECIMAIS =====
 
     for col in ['valor_retido', 'rake_retido']:
-        if col in bots_editados.columns:
+        if col in fraudadores_editados.columns:
             # Se a coluna for string (caso o usuário tenha digitado com vírgula)
-            bots_editados[col] = bots_editados[col].apply(
+            fraudadores_editados[col] = fraudadores_editados[col].apply(
                 lambda x: float(str(x).replace(',', '.')) if pd.notna(x) else 0.0
             )
 
     # ===== CONVERTER OS VALORES PARA REAL =====
-    bots_editados['valor_reais'] = (bots_editados['valor_retido'].astype(float) / bots_editados['handicap'].astype(float)) * 5
-    bots_editados['rake_reais'] = (bots_editados['rake_retido'].astype(float) / bots_editados['handicap'].astype(float)) * 5
-    
+    fraudadores_editados['valor_reais'] = (fraudadores_editados['valor_retido'].astype(float) / fraudadores_editados['handicap'].astype(float)) * 5
+    fraudadores_editados['rake_reais'] = (fraudadores_editados['rake_retido'].astype(float) / fraudadores_editados['handicap'].astype(float)) * 5
+
     # Mostrar resumo
     st.markdown('---')
     st.subheader('📝 Resumo dos valores')
 
     col_resumo_1, col_resumo_2 = st.columns(2)
     with col_resumo_1:
-        total_retido = bots_editados['valor_reais'].sum() + bots_editados['rake_reais'].sum()
+        total_retido = fraudadores_editados['valor_reais'].sum() + fraudadores_editados['rake_reais'].sum()
         st.metric('Total Disponível para Ressarcimento', f'R$ {total_retido:,.2f}')
     with col_resumo_2:
-        bots_com_valor = len(bots_editados[bots_editados['valor_retido'] > 0])
-        st.metric('Bots com Valor Retido', f'{bots_com_valor} / {len(bots_editados)}')
+        fraudadores_com_valor = len(fraudadores_editados[fraudadores_editados['valor_retido'] > 0])
+        st.metric('Fraudadores com Valor Retido', f'{fraudadores_com_valor} / {len(fraudadores_editados)}')
 
     # Mostrar tabela com valores convertidos
     st.dataframe(
-        bots_editados[['id_bot', 'nome_bot', 'nome_clube', 'moeda', 'valor_retido', 'rake_retido', 'valor_reais', 'rake_reais']],
+        fraudadores_editados[['fraudador_id', 'fraudador_nome', 'nome_clube', 'moeda', 'valor_retido', 'rake_retido', 'valor_reais', 'rake_reais']],
         hide_index=True,
         column_config={
-            'id_bot': 'ID Bot',
-            'nome_bot': 'Nome Bot',
+            'fraudador_id': 'ID Fraudador',
+            'fraudador_nome': 'Nome Fraudador',
             'nome_clube': 'Nome Clube',
             'moeda': 'Moeda',
             'valor_retido': st.column_config.NumberColumn(
@@ -497,20 +493,20 @@ if uploaded_file is not None:
             width='stretch'
         )
         # Validar se todos os valores foram preenchidos
-        valores_zerados = bots_editados[bots_editados['valor_retido'] == 0.0]
+        valores_zerados = fraudadores_editados[fraudadores_editados['valor_retido'] == 0.0]
         if len(valores_zerados) > 0:
-            st.warning(f'⚠️ {len(valores_zerados)} bot(s) ainda com valor zero. Confira o valor antes de prosseguir.')
+            st.warning(f'⚠️ {len(valores_zerados)} fraudador(es) ainda com valor zero. Confira o valor antes de prosseguir.')
         else:
-            st.success('✅ Todos os bots com valor preenchido.')
+            st.success('✅ Todos os fraudadores com valor preenchido.')
     with col_config_5: st.empty()
 
     # Lista separadas para ressarcimentos imediatos e futuros
     ressarcimentos_imediatos = []
     ressarcimentos_futuros = []
 
-    # Dicionário para armazenar resultados de cada bot
-    resultados_por_bot = {}
-    
+    # Dicionário para armazenar resultados de cada fraudador
+    resultados_por_fraudador = {}
+
     if calcular:
         # Informar sobre fraudadores (se houver)
         if len(ids_fraudadores) > 0:
@@ -526,35 +522,35 @@ if uploaded_file is not None:
             # Lista ÚNICA para TODOS os ressarcimentos (antes de consolidar)
             todos_ressarcimentos_brutos = []
 
-            # Processar cada bot
-            for idx, bot in bots_editados.iterrows():
-                bot_id = bot['id_bot']
-                bot_nome = bot['nome_bot']
-                valor_disponivel = bot['valor_reais'] + bot['rake_reais']
+            # Processar cada fraudador
+            for idx, fraudador in fraudadores_editados.iterrows():
+                fraudador_id = fraudador['fraudador_id']
+                fraudador_nome = fraudador['fraudador_nome']
+                valor_disponivel = fraudador['valor_reais'] + fraudador['rake_reais']
 
-                # Arualizar progresso
-                progress = (idx + 1) / len(bots_editados)
+                # Atualizar progresso
+                progress = (idx + 1) / len(fraudadores_editados)
                 progress_bar.progress(progress)
-                status_text.text(f'Processando Bot {bot_nome} ({bot_id})...')
+                status_text.text(f'Processando Fraudador {fraudador_nome} ({fraudador_id})...')
 
                 # Se não tiver valor retido, pular
                 if valor_disponivel <= 0:
-                    resultados_por_bot[bot_id] = {
-                        'bot_nome': bot_nome,
+                    resultados_por_fraudador[fraudador_id] = {
+                        'fraudador_nome': fraudador_nome,
                         'valor_disponivel': 0,
                         'vitimas': pd.DataFrame(),
                         'total_ressarcido': 0,
-                        'mensagem': 'Bot sem valor retido'
+                        'mensagem': 'Fraudador sem valor retido'
                     }
                     continue
 
                 # Calcular saldos das vítimas
-                vitimas = calcular_saldo_por_bot(df, bot_id, df_clubes, ids_fraudadores)
+                vitimas = calcular_saldo_por_fraudador(df, fraudador_id, df_clubes, ids_fraudadores)
 
-                # Se não há vítimas, pulas
+                # Se não há vítimas, pular
                 if len(vitimas) == 0:
-                    resultados_por_bot[bot_id] = {
-                        'bot_nome': bot_nome,
+                    resultados_por_fraudador[fraudador_id] = {
+                        'fraudador_nome': fraudador_nome,
                         'valor_disponivel': valor_disponivel,
                         'vitimas': pd.DataFrame(),
                         'total_ressarcido': 0,
@@ -575,8 +571,8 @@ if uploaded_file is not None:
                 total_ressarcido_futuro = vitimas[vitimas['status'] == 'Futuro']['ressarcimento'].sum()
                 total_ressarcido = vitimas['ressarcimento'].sum()
 
-                resultados_por_bot[bot_id] = {
-                    'bot_nome': bot_nome,
+                resultados_por_fraudador[fraudador_id] = {
+                    'fraudador_nome': fraudador_nome,
                     'valor_disponivel': valor_disponivel,
                     'vitimas': vitimas,
                     'total_ressarcido': total_ressarcido,
@@ -588,10 +584,10 @@ if uploaded_file is not None:
                 # Adiciona à lista BRUTA (sem consolidar ainda)
                 for _, vitima in vitimas.iterrows():
                     todos_ressarcimentos_brutos.append({
-                        'player_id': int(vitima['player_id']),
-                        'player_name': vitima['player_name'],
-                        'club_id': int(vitima['club_id']),
-                        'club_name': vitima['club_name'],
+                        'jogador_id': int(vitima['jogador_id']),
+                        'jogador_nome': vitima['jogador_nome'],
+                        'clube_id': int(vitima['clube_id']),
+                        'clube_nome': vitima['clube_nome'],
                         'ressarcimento': vitima['ressarcimento']
                     })
 
@@ -599,14 +595,14 @@ if uploaded_file is not None:
                 progress_bar.empty()
                 status_text.empty()
 
-            # ===== CONSOLIDAÇÃO: AGRUPAR POR PLAYER_ID + CLUB_ID =====
+            # ===== CONSOLIDAÇÃO: AGRUPAR POR JOGADOR_ID + CLUBE_ID =====
             if len(todos_ressarcimentos_brutos) > 0:
                 df_brutos = pd.DataFrame(todos_ressarcimentos_brutos)
 
-                # Agrupar por player_id + club_id (somado ressarcimentos)
-                df_consolidado = df_brutos.groupby(['player_id', 'club_id']).agg({
-                    'player_name': 'first',
-                    'club_name': 'first',
+                # Agrupar por jogador_id + clube_id (somando ressarcimentos)
+                df_consolidado = df_brutos.groupby(['jogador_id', 'clube_id']).agg({
+                    'jogador_nome': 'first',
+                    'clube_nome': 'first',
                     'ressarcimento': 'sum'
                 }).reset_index()
 
@@ -616,10 +612,10 @@ if uploaded_file is not None:
                 df_consolidado['acumulado_anterior'] = 0.0
 
                 if len(df_acumulados_antigos) > 0:
-                    # Merfe com acumulados anteriores
+                    # Merge com acumulados anteriores
                     df_consolidado = df_consolidado.merge(
-                        df_acumulados_antigos[['player_id', 'club_id', 'ressarcimento_acumulado']],
-                        on=['player_id', 'club_id'],
+                        df_acumulados_antigos[['jogador_id', 'clube_id', 'ressarcimento_acumulado']],
+                        on=['jogador_id', 'clube_id'],
                         how='left'
                     )
                     # Preencher NaN com 0
@@ -685,21 +681,21 @@ if uploaded_file is not None:
                     df_brutos = pd.DataFrame(todos_ressarcimentos_brutos)
 
                     # Mostrar ressarcimentos ANTES da consolidação
-                    st.markdown('#### Antes da Consolidação (dados brutos por bot)')
-                    st.caption('Aqui você vê cada ressarcimento individual por bot. Jogadores que enfrentaram múltiplos bots aparecem várias vezes.')
+                    st.markdown('#### Antes da Consolidação (dados brutos por fraudador)')
+                    st.caption('Aqui você vê cada ressarcimento individual por fraudador. Jogadores que enfrentaram múltiplos fraudadores aparecem várias vezes.')
 
                     df_brutos_display = df_brutos.copy()
-                    df_brutos_display = df_brutos_display.sort_values(['player_id', 'club_id'])
+                    df_brutos_display = df_brutos_display.sort_values(['jogador_id', 'clube_id'])
 
                     st.dataframe(
                         df_brutos_display,
                         hide_index=True,
                         width='stretch',
                         column_config={
-                            'player_id': 'ID Jogador',
-                            'player_name': 'Nome Jogador',
-                            'club_id': 'ID Clube',
-                            'club_name': 'Nome Clube',
+                            'jogador_id': 'ID Jogador',
+                            'jogador_nome': 'Nome Jogador',
+                            'clube_id': 'ID Clube',
+                            'clube_nome': 'Nome Clube',
                             'ressarcimento': st.column_config.NumberColumn(
                                 'Ressarcimento (R$)',
                                 format='R$ %.2f'
@@ -713,27 +709,27 @@ if uploaded_file is not None:
                     st.markdown('---')
 
                     # Mostrar quem tem múltiplas entradas
-                    duplicatas = df_brutos_display.groupby(['player_id', 'club_id']).size().reset_index(name='quantidade')
+                    duplicatas = df_brutos_display.groupby(['jogador_id', 'clube_id']).size().reset_index(name='quantidade')
                     duplicatas = duplicatas[duplicatas['quantidade'] > 1]
 
                     if len(duplicatas) > 0:
-                        with st.expander('#### Jogadores com Múltiplos Ressarcimentos (enfrentaram mais de 1 bot)', expanded=False):
+                        with st.expander('#### Jogadores com Múltiplos Ressarcimentos (enfrentaram mais de 1 fraudador)', expanded=False):
                             for _, dup in duplicatas.iterrows():
-                                player_id = dup['player_id']
-                                club_id = dup['club_id']
+                                jogador_id = dup['jogador_id']
+                                clube_id = dup['clube_id']
                                 qtd = dup['quantidade']
 
-                                # Buscar todas as entreadas deste jogador
+                                # Buscar todas as entradas deste jogador
                                 entradas = df_brutos[
-                                    (df_brutos['player_id'] == player_id) &
-                                    (df_brutos['club_id'] == club_id)
+                                    (df_brutos['jogador_id'] == jogador_id) &
+                                    (df_brutos['clube_id'] == clube_id)
                                 ]
 
-                                player_name = entradas.iloc[0]['player_name']
-                                club_name = entradas.iloc[0]['club_name']
+                                jogador_nome = entradas.iloc[0]['jogador_nome']
+                                clube_nome = entradas.iloc[0]['clube_nome']
                                 total = entradas['ressarcimento'].sum()
 
-                                st.markdown(f'**{player_name} ({player_id})** - {club_name}')
+                                st.markdown(f'**{jogador_nome} ({jogador_id})** - {clube_nome}')
 
                                 col_debug_1, col_debug_2 = st.columns([3, 1])
                                 with col_debug_1:
@@ -748,7 +744,7 @@ if uploaded_file is not None:
                                 with col_debug_2:
                                     st.metric('Total', f'R$ {total:.2f}')
                     else:
-                        st.info('✅ Nenhum jogador enfrentou múltiplos bots')
+                        st.info('✅ Nenhum jogador enfrentou múltiplos fraudadores')
 
                     st.markdown('---')
 
@@ -757,9 +753,9 @@ if uploaded_file is not None:
                     st.caption('Aqui cada jogador aparece apenas uma vez, com a soma de todos os ressarcimentos.')
 
                     # Agrupar
-                    df_consolidado_debug = df_brutos.groupby(['player_id', 'club_id']).agg({
-                        'player_name': 'first',
-                        'club_name': 'first',
+                    df_consolidado_debug = df_brutos.groupby(['jogador_id', 'clube_id']).agg({
+                        'jogador_nome': 'first',
+                        'clube_nome': 'first',
                         'ressarcimento': 'sum'
                     }).reset_index()
 
@@ -770,10 +766,10 @@ if uploaded_file is not None:
                         hide_index=True,
                         width='stretch',
                         column_config={
-                            'player_id': 'ID Jogador',
-                            'player_name': 'Nome Jogador',
-                            'club_id': 'ID Clube',
-                            'club_name': 'Nome Clube',
+                            'jogador_id': 'ID Jogador',
+                            'jogador_nome': 'Nome Jogador',
+                            'clube_id': 'ID Clube',
+                            'clube_nome': 'Nome Clube',
                             'ressarcimento': st.column_config.NumberColumn(
                                 'Ressarcimento (R$)',
                                 format='R$ %.2f'
@@ -796,20 +792,20 @@ if uploaded_file is not None:
 
             # ===== SALVAR RESULTADOS NO SESSION STATE =====
             st.session_state['resultados_calculados'] = True
-            st.session_state['resultados_por_bot'] = resultados_por_bot
+            st.session_state['resultados_por_fraudador'] = resultados_por_fraudador
             st.session_state['ressarcimentos_imediatos'] = ressarcimentos_imediatos
             st.session_state['ressarcimentos_futuros'] = ressarcimentos_futuros
-            st.session_state['bots_editados'] = bots_editados
+            st.session_state['fraudadores_editados'] = fraudadores_editados
             st.session_state['valor_minimo'] = valor_minimo
 
         st.success('✅ Processamento concluído!')
 
     if st.session_state.get('resultados_calculados', False):
         # Carregar resultados do session state
-        resultados_por_bot = st.session_state['resultados_por_bot']
+        resultados_por_fraudador = st.session_state['resultados_por_fraudador']
         ressarcimentos_imediatos = st.session_state['ressarcimentos_imediatos']
         ressarcimentos_futuros = st.session_state['ressarcimentos_futuros']
-        bots_editados = st.session_state['bots_editados']
+        fraudadores_editados = st.session_state['fraudadores_editados']
         valor_minimo = st.session_state['valor_minimo']
 
         # ===== RESUMO GERAL =====
@@ -817,10 +813,10 @@ if uploaded_file is not None:
         st.subheader('📈 Resumo Geral')
 
         # Calcular métricas gerais
-        total_bots_processados = len([r for r in resultados_por_bot.values() if r['total_ressarcido'] > 0])
-        total_disponivel = sum([r['valor_disponivel'] for r in resultados_por_bot.values()])
-        total_ressarcido_imediato = sum([r['total_imediato'] for r in resultados_por_bot.values()])
-        total_ressarcido_futuro = sum([r['total_futuro'] for r in resultados_por_bot.values()])
+        total_fraudadores_processados = len([r for r in resultados_por_fraudador.values() if r['total_ressarcido'] > 0])
+        total_disponivel = sum([r['valor_disponivel'] for r in resultados_por_fraudador.values()])
+        total_ressarcido_imediato = sum([r['total_imediato'] for r in resultados_por_fraudador.values()])
+        total_ressarcido_futuro = sum([r['total_futuro'] for r in resultados_por_fraudador.values()])
         total_vitimas_imediatas = len(ressarcimentos_imediatos)
         total_vitimas_futuras = len(ressarcimentos_futuros)
         total_ressarcimento = total_ressarcido_imediato + total_ressarcido_futuro
@@ -829,7 +825,7 @@ if uploaded_file is not None:
         col_ressarcimento_1, col_ressarcimento_2, col_ressarcimento_3, col_ressarcimento_4 = st.columns(4)
         with col_ressarcimento_1:
             st.metric('Total Disponível', f'R$ {total_disponivel:,.2f}')
-            st.metric('Bots Processados', f'{total_bots_processados} / {len(bots_editados)}')
+            st.metric('Fraudadores Processados', f'{total_fraudadores_processados} / {len(fraudadores_editados)}')
         with col_ressarcimento_2:
             st.metric('Ressarcimento Imediato', f'R$ {total_ressarcido_imediato:,.2f}')
             st.metric('Vítimas (Imediato)', total_vitimas_imediatas)
@@ -849,11 +845,11 @@ if uploaded_file is not None:
 
         st.markdown('---')
 
-        # ===== DETALHAMENTO POR BOT =====
+        # ===== DETALHAMENTO POR FRAUDADOR =====
         st.subheader('📝 Detalhamento por ID')
         with st.expander('🔍 Visualizar os detalhes de cada ID:', expanded=False):
-            for bot_id, resultado in resultados_por_bot.items():
-                bot_nome = resultado['bot_nome']
+            for fraudador_id, resultado in resultados_por_fraudador.items():
+                fraudador_nome = resultado['fraudador_nome']
                 valor_disponivel = resultado['valor_disponivel']
                 total_ressarcido = resultado['total_ressarcido']
                 vitimas = resultado['vitimas']
@@ -861,10 +857,10 @@ if uploaded_file is not None:
 
                 # Título do expander com resumo
                 if total_ressarcido > 0:
-                    titulo = f'🤖 {bot_nome} ({bot_id}) | Ressarcido: R$ {total_ressarcido:,.2f} de R$ {valor_disponivel:,.2f}'
+                    titulo = f'🚫 {fraudador_nome} ({fraudador_id}) | Ressarcido: R$ {total_ressarcido:,.2f} de R$ {valor_disponivel:,.2f}'
                     expanded = False # Começa fechado
                 else:
-                    titulo = f'⚠️ {bot_nome} ({bot_id}) | {mensagem}'
+                    titulo = f'⚠️ {fraudador_nome} ({fraudador_id}) | {mensagem}'
                     expanded = False
 
                 with st.expander(titulo, expanded=expanded):
@@ -887,7 +883,7 @@ if uploaded_file is not None:
 
                     # Preparar tabela para exibição
                     vitimas_display = vitimas[[
-                        'player_id', 'player_name', 'club_id', 'club_name', 'saldo_liquido', 'ressarcimento', 'status'
+                        'jogador_id', 'jogador_nome', 'clube_id', 'clube_nome', 'saldo_liquido', 'ressarcimento', 'status'
                     ]].copy()
 
                     vitimas_display.columns = ['ID Jogador', 'Nome', 'Clube ID', 'Nome Clube', 'Perda Líquida', 'Ressarcimento', 'Status']
@@ -950,10 +946,10 @@ if uploaded_file is not None:
                     hide_index=True,
                     width='stretch',
                     column_config={
-                        'player_id': st.column_config.NumberColumn('ID Jogador', width='small'),
-                        'player_name': st.column_config.TextColumn('Nome Jogador', width='medium'),
-                        'club_id': st.column_config.NumberColumn('ID Clube', width='small'),
-                        'club_name': st.column_config.TextColumn('Nome Clube', width='medium'),
+                        'jogador_id': st.column_config.NumberColumn('ID Jogador', width='small'),
+                        'jogador_nome': st.column_config.TextColumn('Nome Jogador', width='medium'),
+                        'clube_id': st.column_config.NumberColumn('ID Clube', width='small'),
+                        'clube_nome': st.column_config.TextColumn('Nome Clube', width='medium'),
                         'ressarcimento_novo': st.column_config.NumberColumn(
                             'Novo (R$)',
                             format='R$ %.2f',
@@ -992,10 +988,10 @@ if uploaded_file is not None:
                     hide_index=True,
                     width='stretch',
                     column_config={
-                        'player_id': st.column_config.NumberColumn('ID Jogador', width='small'),
-                        'player_name': st.column_config.TextColumn('Nome Jogador', width='medium'),
-                        'club_id': st.column_config.NumberColumn('ID Clube', width='small'),
-                        'club_name': st.column_config.TextColumn('Nome Clube', width='medium'),
+                        'jogador_id': st.column_config.NumberColumn('ID Jogador', width='small'),
+                        'jogador_nome': st.column_config.TextColumn('Nome Jogador', width='medium'),
+                        'clube_id': st.column_config.NumberColumn('ID Clube', width='small'),
+                        'clube_nome': st.column_config.TextColumn('Nome Clube', width='medium'),
                         'ressarcimento_novo': st.column_config.NumberColumn(
                             'Novo (R$)',
                             format='R$ %.2f',
@@ -1064,7 +1060,7 @@ if uploaded_file is not None:
         salvar_fraudadores = st.checkbox(
             '🚫 Salvar Fraudadores',
             value=True,
-            help='Adiciona os bots/fraudadores desta apuração à lista'
+            help='Adiciona os fraudadores desta apuração à lista'
         )
 
     with col_salvamento_2:
@@ -1098,12 +1094,12 @@ if uploaded_file is not None:
                 try:
                     fraudadores_para_salvar = []
 
-                    for _, fraudador in bots_editados.iterrows():
+                    for _, fraudador in fraudadores_editados.iterrows():
                         fraudadores_para_salvar.append({
-                            'player_id': int(fraudador['id_bot']),
-                            'player_name': fraudador['nome_bot'],
-                            'club_id': fraudador['clube_id'],
-                            'club_name': fraudador['nome_clube'],
+                            'jogador_id': int(fraudador['fraudador_id']),
+                            'jogador_nome': fraudador['fraudador_nome'],
+                            'clube_id': fraudador['clube_id'],
+                            'clube_nome': fraudador['nome_clube'],
                             'protocolo': protocolo,
                             'valor_total_retido': fraudador['valor_reais'] + fraudador['rake_reais']
                         })
@@ -1191,12 +1187,12 @@ if uploaded_file is not None:
 
             # Prepara DataFrame para download
             df_download = df_futuros[[
-                'player_id', 'player_name', 'club_id', 'club_name', 'ressarcimento_total'
+                'jogador_id', 'jogador_nome', 'clube_id', 'clube_nome', 'ressarcimento_total'
             ]].copy()
 
             df_download['data_ultima_atualizacao'] = date.today().strftime('%Y-%m-%d')
 
-            df_download.columns = ['player_id', 'player_name', 'club_id', 'club_name', 'ressarcimento_acumulado', 'data_ultima_atualizacao']
+            df_download.columns = ['jogador_id', 'jogador_nome', 'clube_id', 'clube_nome', 'ressarcimento_acumulado', 'data_ultima_atualizacao']
 
             # Converter para CSV
             csv = df_download.to_csv(index=False, encoding='utf-8-sig')
@@ -1224,7 +1220,7 @@ if uploaded_file is not None:
             **String formatada para prodessar ressarcimentos no sistema.**
             Copie e cole esta string no sistema de pagamentos.
                     
-            Formato: `player_id - club_id - valor;`
+            Formato: `jogador_id - clube_id - valor;`
                     
             Para copiar o texto todo utilize o botão no canto superior direito da caixa abaixo:
             ''')
@@ -1232,14 +1228,14 @@ if uploaded_file is not None:
             # Gerar string formatada
             string_ressarcimento = ''
             for ressarcimento in ressarcimentos_imediatos:
-                player_id = int(ressarcimento['player_id'])
-                club_id = int(ressarcimento['club_id'])
+                jogador_id = int(ressarcimento['jogador_id'])
+                clube_id = int(ressarcimento['clube_id'])
                 valor = ressarcimento['ressarcimento_total']
 
                 # Truncar para 2 casa decimais (sem arredondar)
                 valor_truncado = math.floor(valor * 100) / 100
 
-                string_ressarcimento += f'{player_id} - {club_id} - {valor_truncado}; '
+                string_ressarcimento += f'{jogador_id} - {clube_id} - {valor_truncado}; '
             
             # Mostrar a string em uma caixa de código
             st.code(
@@ -1280,22 +1276,22 @@ if uploaded_file is not None:
         - Resumo Geral
         - Ressarcimentos imediatos
         - Ressarcimentos futuros
-        - Detalhamento por bot (uma aba para cada)
+        - Detalhamento por fraudador (uma aba para cada)
         ''')
 
         try:
             excel_bytes = criar_excel_ressarcimento(
-                resultados_por_bot,
+                resultados_por_fraudador,
                 ressarcimentos_imediatos,
                 ressarcimentos_futuros,
-                bots_editados,
+                fraudadores_editados,
                 valor_minimo
             )
 
             st.download_button(
                 label='📥 Baixar Relatório Completo em Excel',
                 data=excel_bytes,
-                file_name=f'ressarcimento_bots_{date.today().strftime('%Y-%m-%d')}.xlsx',
+                file_name=f'ressarcimento_fraudadores_{date.today().strftime('%Y-%m-%d')}.xlsx',
                 mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 type='primary',
                 width='stretch'
@@ -1310,17 +1306,17 @@ else:
     st.info('👆 Faça o upload do arquivo CSV para começar.')
     st.markdown("""
         **O arquivo deve conter as seguintes colunas:**
-        - `PLAYER_ID`: ID do jogador
-        - `PLAYER_NAME`: Nome do jogador
-        - `CLUB_ID`: ID do clube
-        - `union_id`: ID da liga
+        - `JOGADOR_ID`: ID do jogador
+        - `JOGADOR_NOME`: Nome do jogador
+        - `CLUBE_ID`: ID do clube
+        - `LIGA_ID`: ID da liga
         - `game_id`: ID do mesa
-        - `HAND_ID`: ID da mão
+        - `MAO_ID`: ID da mão
         - `GANHOS_REAIS`: Ganho/Perda em reais
         - `rake_reais`: Rake gerado em reais
         - `blind_reais`: Valor do big blind em reais
         - `ante_por_jogador_reais`: Valor do ante em reais
         - `jogador_na_hand`: Quantidade de jogadores em cada mão
         - `limite_calculado_reais`: Valor mínimo que é considerado para o bot ter influenciado na mão
-        - `IS_BOT`: Indica se está na lista de bots (TRUE/FALSE)
+        - `FRAUDADOR`: Indica se está na lista de fraudadores (TRUE/FALSE)
     """)

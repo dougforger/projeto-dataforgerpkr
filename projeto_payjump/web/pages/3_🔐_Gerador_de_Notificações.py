@@ -26,11 +26,11 @@ def carregar_dados() -> pd.DataFrame:
     clubes = pd.read_csv(DATA_DIR / 'clubes.csv')
     ligas = pd.read_csv(DATA_DIR / 'ligas.csv')
     
-    clubes['id-liga'] = clubes['id-liga'].astype(int)
-    ligas['id-liga'] = ligas['id-liga'].astype(int)
+    clubes['liga_id'] = clubes['liga_id'].astype(int)
+    ligas['liga_id'] = ligas['liga_id'].astype(int)
 
-    clubes = clubes.merge(ligas[['id-liga', 'idioma']], on='id-liga', how='left')
-    clubes = clubes.set_index('id-clube')
+    clubes = clubes.merge(ligas[['liga_id', 'idioma']], on='liga_id', how='left')
+    clubes = clubes.set_index('clube_id')
     return clubes
 
 lista_clubes = carregar_dados()
@@ -86,8 +86,8 @@ data_hoje = date.today().strftime('%d/%m/%Y')
 
 col3, col4 = st.columns(2)
 with col3:
-    st.text(f'Clube: {clube['nome-clube']} ({clube.name})')
-    st.text(f'Liga: {clube['nome-liga']} ({clube['id-liga']})')
+    st.text(f'Clube: {clube['clube_nome']} ({clube.name})')
+    st.text(f'Liga: {clube['liga_nome']} ({clube['liga_id']})')
 with col4:
     st.text(f'Data: {data_hoje}')
     st.text(f'Idioma: {idioma}')
@@ -95,10 +95,10 @@ with col4:
 cabecalho = montar_cabecalho(
     idioma=idioma,
     protocolo=protocolo,
-    nome_clube=clube['nome-clube'],
+    nome_clube=clube['clube_nome'],
     id_clube=clube.name,
-    nome_liga=clube['nome-liga'],
-    id_liga=clube['id-liga'],
+    nome_liga=clube['liga_nome'],
+    id_liga=clube['liga_id'],
     data=data_hoje
 )
 

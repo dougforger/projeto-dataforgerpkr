@@ -101,16 +101,16 @@ if uploaded_file is not None:
 
         # Merge com os clubes
         df['Club ID'] = df['Club ID'].astype(int)
-        df_clubes['id-clube'] = df_clubes['id-clube'].astype(int)
-        
+        df_clubes['clube_id'] = df_clubes['clube_id'].astype(int)
+
         df = df.merge(
-            df_clubes[['id-clube', 'nome-clube']],
+            df_clubes[['clube_id', 'clube_nome']],
             left_on = 'Club ID',
-            right_on = 'id-clube',
+            right_on = 'clube_id',
             how = 'left')
 
-        df = df.rename(columns={'nome-clube': 'Club Name'})
-        df = df.drop(columns=['id-clube'])
+        df = df.rename(columns={'clube_nome': 'Club Name'})
+        df = df.drop(columns=['clube_id'])
         df = df[['Player ID', 'Name', 'Club ID', 'Club Name', 'Union ID', 'Rank', 'prize']]
 
         # Verifica clubes sem nome

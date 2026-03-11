@@ -35,23 +35,23 @@ class FraudadorIdentificado(Base):
     '''
     Tabela de ids identificados como fraudadores (blaklist).
 
-    Inclui: bots, collusion, chip dumping, etc.
-    Cada conta só pode aparecer uma vez (player_id único).
+    Inclui: fraudadores, collusion, chip dumping, etc.
+    Cada conta só pode aparecer uma vez (jogador_id único).
     '''
     __tablename__ = 'fraudadores_identificados'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     protocolo = Column(Integer, nullable=False, index=True)
-    player_id = Column(Integer, unique=True, nullable=False, index=True)
-    player_name = Column(String(200))
-    club_id = Column(Integer)
-    club_name = Column(String(200))
+    jogador_id = Column(Integer, unique=True, nullable=False, index=True)
+    jogador_nome = Column(String(200))
+    clube_id = Column(Integer)
+    clube_nome = Column(String(200))
     data_identificacao = Column(Date, nullable=False)
     valor_total_retido = Column(Float, default=0.0)
 
     def __repr__(self):
-        return f'<{self.player_name} ({self.player_id}) - Protocolo: {self.protocolo}>'
-    
+        return f'<{self.jogador_nome} ({self.jogador_id}) - Protocolo: {self.protocolo}>'
+
 class HistoricoRessarcimento(Base):
     '''
     Histórico completo de todos os ressarcimentos já processados.
@@ -63,18 +63,18 @@ class HistoricoRessarcimento(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     protocolo = Column(Integer, nullable=False, index=True)
     data_ressarcimento = Column(Date, nullable=False, index=True)
-    player_id = Column(Integer, nullable=False, index=True)
-    player_name = Column(String(200))
-    club_id = Column(Integer, index=True)
-    club_name = Column(String(200))
+    jogador_id = Column(Integer, nullable=False, index=True)
+    jogador_nome = Column(String(200))
+    clube_id = Column(Integer, index=True)
+    clube_nome = Column(String(200))
     valor_ressarcido = Column(Float, nullable=False)
     status = Column(String(50)) # 'Imediato' ou 'Acumulado'
     referencia = Column(String(200)) # Ex: 'Semana 10/03'
     created_at = Column(DateTime, default=datetime.now, nullable=False)
 
     def __repr__(self):
-        return f'<Ressarcimento {self.player_id}: R$ {self.valor_ressarcido:.2f} - Protocolo: {self.protocolo}>'
-    
+        return f'<Ressarcimento {self.jogador_id}: R$ {self.valor_ressarcido:.2f} - Protocolo: {self.protocolo}>'
+
 class Acumulado(Base):
     '''
     Ressarcimentos pendentes (abaixo do valor mínimo definido)
@@ -83,32 +83,32 @@ class Acumulado(Base):
     '''
     __tablename__ = 'acumulados'
     __table_args__ = (
-        UniqueConstraint('player_id', 'club_id', name='uq_player_club'),
+        UniqueConstraint('jogador_id', 'clube_id', name='uq_jogador_clube'),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    player_id = Column(Integer, nullable=False, index=True)
-    club_id = Column(Integer, nullable=False, index=True)
-    player_name = Column(String(200))
-    club_name = Column(String(200))
+    jogador_id = Column(Integer, nullable=False, index=True)
+    clube_id = Column(Integer, nullable=False, index=True)
+    jogador_nome = Column(String(200))
+    clube_nome = Column(String(200))
     ressarcimento_acumulado = Column(Float, nullable=False)
     data_ultima_atualizacao = Column(Date, nullable=False)
 
     def __repr__(self):
-        return f'<Acumulado {self.player_id}: R$ {self.ressarcimento_acumulado:.2f}>'
-    
+        return f'<Acumulado {self.jogador_id}: R$ {self.ressarcimento_acumulado:.2f}>'
+
 # =====  CRIAR TABELAS NO BANCO =====
-def incializar_banco():
+def inicializar_banco():
     '''
     Cria todas as tabelas no banco de dados.
-    
+
     Se as tabelas já existirem, não faz nada.
     '''
     Base.metadata.create_all(engine)
-    print(f'✅ Banco incializado em: {DB_PATH}')
+    print(f'✅ Banco inicializado em: {DB_PATH}')
 
-# Inicialização automática ao importat o módulo
-incializar_banco()
+# Inicialização automática ao importar o módulo
+inicializar_banco()
 
 # ===== FUNÇÕES DE ACESSO - FRAUDADORES =====
 def get_ids_fraudadores():
@@ -116,11 +116,11 @@ def get_ids_fraudadores():
     Retorna lista de IDs de fraudadores conhecidos.
 
     Returns:
-        list: Lista de player_ids que são fraudadores
+        list: Lista de jogador_ids que são fraudadores
     '''
     session = Session()
     try:
-        fraudadores = session.query(FraudadorIdentificado.player_id).all()
+        fraudadores = session.query(FraudadorIdentificado.jogador_id).all()
         return [f[0] for f in fraudadores]
     finally:
         session.close()
@@ -137,10 +137,10 @@ def get_fraudadores_completo():
         fraudadores = session.query(FraudadorIdentificado).all()
         return [{
             'id': f.id,
-            'player_id': f.player_id,
-            'player_name': f.player_name,
-            'club_id': f.club_id,
-            'club_name': f.club_name,
+            'jogador_id': f.jogador_id,
+            'jogador_nome': f.jogador_nome,
+            'clube_id': f.clube_id,
+            'clube_nome': f.clube_nome,
             'data_identificacao': f.data_identificacao,
             'protocolo': f.protocolo,
             'valor_total_retido': f.valor_total_retido
@@ -148,15 +148,15 @@ def get_fraudadores_completo():
     finally:
         session.close()
 
-def adicionar_fraudador(player_id, player_name, club_id, club_name, protocolo, valor_retido):
+def adicionar_fraudador(jogador_id, jogador_nome, clube_id, clube_nome, protocolo, valor_retido):
     '''
     Adiciona ou atualiza um fraudador na lista.
 
     Args:
-        player_id (int): ID do jogador
-        player_name (str): Nome do jogador
-        club_id (int): ID do clube
-        club_name (str): Nome do clube
+        jogador_id (int): ID do jogador
+        jogador_nome (str): Nome do jogador
+        clube_id (int): ID do clube
+        clube_nome (str): Nome do clube
         protocolo (int): Número do protocolo do Pipefy (ex: 123456789)
         valor_retido (float): Valor total retido
 
@@ -166,22 +166,22 @@ def adicionar_fraudador(player_id, player_name, club_id, club_name, protocolo, v
     session = Session()
     try:
         existing = session.query(FraudadorIdentificado).filter_by(
-            player_id=int(player_id)
+            jogador_id=int(jogador_id)
         ).first()
 
         if existing:
-            existing.player_name = player_name
-            existing.club_id = club_id
-            existing.club_name = club_name
+            existing.jogador_nome = jogador_nome
+            existing.clube_id = clube_id
+            existing.clube_nome = clube_nome
             existing.data_identificacao = datetime.now().date()
             existing.protocolo = protocolo
             existing.valor_total_retido = valor_retido
         else:
             fraudador = FraudadorIdentificado(
-                player_id = int(player_id),
-                player_name = player_name,
-                club_id = club_id,
-                club_name = club_name,
+                jogador_id = int(jogador_id),
+                jogador_nome = jogador_nome,
+                clube_id = clube_id,
+                clube_nome = clube_nome,
                 data_identificacao = datetime.now().date(),
                 protocolo = protocolo,
                 valor_total_retido = valor_retido
@@ -200,7 +200,7 @@ def adicionar_fraudador(player_id, player_name, club_id, club_name, protocolo, v
 def adicionar_fraudadores_lote(fraudadores):
     '''
     Adiciona múltiplos fraudadores de uma vez.
-    Usa upsert baseado em player_id: atualiza se já existir, insere se não existir.
+    Usa upsert baseado em jogador_id: atualiza se já existir, insere se não existir.
 
     Args:
         fraudadores (list[dict]): Lista de dicionários com dados dos fraudadores
@@ -216,24 +216,24 @@ def adicionar_fraudadores_lote(fraudadores):
         count = 0
         for f in fraudadores:
             existing = session.query(FraudadorIdentificado).filter_by(
-                player_id=int(f['player_id'])
+                jogador_id=int(f['jogador_id'])
             ).first()
 
             if existing:
                 # Atualizar registro existente
-                existing.player_name = f['player_name']
-                existing.club_id = int(f['club_id']) if f['club_id'] is not None else None
-                existing.club_name = f['club_name']
+                existing.jogador_nome = f['jogador_nome']
+                existing.clube_id = int(f['clube_id']) if f['clube_id'] is not None else None
+                existing.clube_nome = f['clube_nome']
                 existing.protocolo = int(f['protocolo'])
                 existing.valor_total_retido = float(f['valor_total_retido'])
                 existing.data_identificacao = datetime.now().date()
             else:
                 # Inserir novo registro
                 fraudador = FraudadorIdentificado(
-                    player_id = int(f['player_id']),
-                    player_name = f['player_name'],
-                    club_id = int(f['club_id']) if f['club_id'] is not None else None,
-                    club_name = f['club_name'],
+                    jogador_id = int(f['jogador_id']),
+                    jogador_nome = f['jogador_nome'],
+                    clube_id = int(f['clube_id']) if f['clube_id'] is not None else None,
+                    clube_nome = f['clube_nome'],
                     data_identificacao = datetime.now().date(),
                     protocolo = int(f['protocolo']),
                     valor_total_retido = float(f['valor_total_retido'])
@@ -250,19 +250,19 @@ def adicionar_fraudadores_lote(fraudadores):
     finally:
         session.close()
 
-def remover_fraudador(player_id):
+def remover_fraudador(jogador_id):
     '''
     Remove um fraudador da lista.
 
     Args:
-        player_id (int): ID do jogador a remover
+        jogador_id (int): ID do jogador a remover
 
     Returns:
         bool: True se removido, False se não encontrado
     '''
     session = Session()
     try:
-        fraudador = session.query(FraudadorIdentificado).filter_by(player_id=player_id).first()
+        fraudador = session.query(FraudadorIdentificado).filter_by(jogador_id=jogador_id).first()
         if fraudador:
             session.delete(fraudador)
             session.commit()
@@ -277,15 +277,15 @@ def remover_fraudador(player_id):
 
 # ===== FUNÇÕES DE ACESSO - HISTÓRICO DE RESSARCIMENTOS =====
 
-def salvar_ressarcimento(player_id, player_name, club_id, club_name, valor_ressarcido, status, protocolo, referencia):
+def salvar_ressarcimento(jogador_id, jogador_nome, clube_id, clube_nome, valor_ressarcido, status, protocolo, referencia):
     '''
     Salva um ressarcimento no histórico.
 
     Args:
-       player_id (int): ID do jogador
-       player_name (str): Nome do jogador
-       club_id (int): ID do clube
-       club_name (str): Nome do clube
+       jogador_id (int): ID do jogador
+       jogador_nome (str): Nome do jogador
+       clube_id (int): ID do clube
+       clube_nome (str): Nome do clube
        valor_ressarcido (float): Valor ressarcido em reais
        status (str): 'Imediato' ou 'Acumulado'
        protocolo (int): Número do protocolo no Pipefy
@@ -298,10 +298,10 @@ def salvar_ressarcimento(player_id, player_name, club_id, club_name, valor_ressa
     try:
         ressarcimento = HistoricoRessarcimento(
             data_ressarcimento = datetime.now().date(),
-            player_id = player_id,
-            player_name = player_name,
-            club_id = club_id,
-            club_name = club_name,
+            jogador_id = jogador_id,
+            jogador_nome = jogador_nome,
+            clube_id = clube_id,
+            clube_nome = clube_nome,
             valor_ressarcido = valor_ressarcido,
             status = status,
             protocolo = protocolo,
@@ -323,7 +323,7 @@ def salvar_ressarcimentos_lote(ressarcimentos, protocolo, referencia):
 
     Args:
         ressarcimentos (list[dict]): Lista de dicionários com dados dos ressarcimentos
-            Cada dict deve ter: player_id, player_name, club_id, club_name, valor_ressarcido, status
+            Cada dict deve ter: jogador_id, jogador_nome, clube_id, clube_nome, valor_ressarcido, status
         protocolo (int): Número do protocolo do Pipefy
         referência (str): Referência do período
 
@@ -338,10 +338,10 @@ def salvar_ressarcimentos_lote(ressarcimentos, protocolo, referencia):
         for r in ressarcimentos:
             ressarcimento = HistoricoRessarcimento(
                 data_ressarcimento = datetime.now().date(),
-                player_id = r['player_id'],
-                player_name = r['player_name'],
-                club_id = r['club_id'],
-                club_name = r["club_name"],
+                jogador_id = r['jogador_id'],
+                jogador_nome = r['jogador_nome'],
+                clube_id = r['clube_id'],
+                clube_nome = r["clube_nome"],
                 valor_ressarcido = r['ressarcimento_total'],
                 status = r.get('status', 'Imediato'), # Default: Imediato
                 protocolo = protocolo,
@@ -349,7 +349,7 @@ def salvar_ressarcimentos_lote(ressarcimentos, protocolo, referencia):
             )
             session.add(ressarcimento)
             count += 1
-        
+
         session.commit()
         return count
     except Exception as e:
@@ -376,10 +376,10 @@ def get_historico_completo():
             'id': h.id,
             'protocolo': h.protocolo,
             'data_ressarcimento': h.data_ressarcimento,
-            'player_id': h.player_id,
-            'player_name': h.player_name,
-            'club_id': h.club_id,
-            'club_name': h.club_name,
+            'jogador_id': h.jogador_id,
+            'jogador_nome': h.jogador_nome,
+            'clube_id': h.clube_id,
+            'clube_nome': h.clube_nome,
             'valor_ressarcido': h.valor_ressarcido,
             'status': h.status,
             'referencia': h.referencia,
@@ -409,10 +409,10 @@ def get_historico_por_periodo(data_inicio, data_fim):
             'id': h.id,
             'protocolo': h.protocolo,
             'data_ressarcimento': h.data_ressarcimento,
-            'player_id': h.player_id,
-            'player_name': h.player_name,
-            'club_id': h.club_id,
-            'club_name': h.club_name,
+            'jogador_id': h.jogador_id,
+            'jogador_nome': h.jogador_nome,
+            'clube_id': h.clube_id,
+            'clube_nome': h.clube_nome,
             'valor_ressarcido': h.valor_ressarcido,
             'status': h.status,
             'referencia': h.referencia,
@@ -424,10 +424,10 @@ def get_historico_por_periodo(data_inicio, data_fim):
 def get_historico_por_protocolo(protocolo):
     '''
     Retorna todos os ressarcimentos de um protocolo específico.
-    
+
     Args:
         protocolo (int): Número do protocolo (ex: 123456789)
-        
+
     Returns:
         list[dict]: Ressarcimentos deste protocolo
     '''
@@ -441,10 +441,10 @@ def get_historico_por_protocolo(protocolo):
             'id': h.id,
             'protocolo': h.protocolo,
             'data_ressarcimento': h.data_ressarcimento,
-            'player_id': h.player_id,
-            'player_name': h.player_name,
-            'club_id': h.club_id,
-            'club_name': h.club_name,
+            'jogador_id': h.jogador_id,
+            'jogador_nome': h.jogador_nome,
+            'clube_id': h.clube_id,
+            'clube_nome': h.clube_nome,
             'valor_ressarcido': h.valor_ressarcido,
             'status': h.status,
             'referencia': h.referencia,
@@ -456,7 +456,7 @@ def get_historico_por_protocolo(protocolo):
 def get_estatisticas_historico():
     '''
     Retorna estatísticas gerais do histórico.
-    
+
     Returns:
         dict: Estatísticas agregadas
     '''
@@ -467,8 +467,8 @@ def get_estatisticas_historico():
         stats = session.query(
             func.count(HistoricoRessarcimento.id).label('total_ressarcimentos'),
             func.sum(HistoricoRessarcimento.valor_ressarcido).label('valor_total'),
-            func.count(func.distinct(HistoricoRessarcimento.player_id)).label('jogadores_unicos'),
-            func.count(func.distinct(HistoricoRessarcimento.club_id)).label('clubes_unicos'),
+            func.count(func.distinct(HistoricoRessarcimento.jogador_id)).label('jogadores_unicos'),
+            func.count(func.distinct(HistoricoRessarcimento.clube_id)).label('clubes_unicos'),
             func.count(func.distinct(HistoricoRessarcimento.protocolo)).label('protocolos_unicos')
         ).first()
 
@@ -487,7 +487,7 @@ def get_estatisticas_historico():
 def get_acumulados():
     '''
     Retorna todos os acumulados pendentes.
-    
+
     Returns:
         list[dict]: Lista de acumulados
     '''
@@ -498,10 +498,10 @@ def get_acumulados():
         ).all()
 
         return [{
-            'player_id': a.player_id,
-            'player_name': a.player_name,
-            'club_id': a.club_id,
-            'club_name': a.club_name,
+            'jogador_id': a.jogador_id,
+            'jogador_nome': a.jogador_nome,
+            'clube_id': a.clube_id,
+            'clube_nome': a.clube_nome,
             'ressarcimento_acumulado': a.ressarcimento_acumulado,
             'data_ultima_atualizacao': a.data_ultima_atualizacao
         } for a in acumulados]
@@ -511,14 +511,14 @@ def get_acumulados():
 def atualizar_acumulados(acumulados_novos):
     '''
     Substitui TODOS os acumulados pelos novos.
-    
+
     Remove todos os acumulados antigos e insere os novos.
     Usado após cada cálculo de ressarcimento.
-    
+
     Args:
         acumulados_novos (list[dict]): Lista de novos acumulados
-            Cada dict deve ter: player_id, club_id, player_name, club_name, ressarcimento_total
-            
+            Cada dict deve ter: jogador_id, clube_id, jogador_nome, clube_nome, ressarcimento_total
+
     Returns:
         int: Quantidade de acumulados salvos
     '''
@@ -533,10 +533,10 @@ def atualizar_acumulados(acumulados_novos):
 
         for a in acumulados_novos:
             acumulado = Acumulado(
-                player_id = a['player_id'],
-                player_name = a['player_name'],
-                club_id = a['club_id'],
-                club_name = a['club_name'],
+                jogador_id = a['jogador_id'],
+                jogador_nome = a['jogador_nome'],
+                clube_id = a['clube_id'],
+                clube_nome = a['clube_nome'],
                 ressarcimento_acumulado = a['ressarcimento_total'],
                 data_ultima_atualizacao = data_hoje
             )
@@ -555,9 +555,9 @@ def atualizar_acumulados(acumulados_novos):
 def limpar_acumulados():
     '''
     Remove TODOS os acumulados do banco.
-    
+
     Útil para reset ou limpeza.
-    
+
     Returns:
         int: Quantidade de acumulados removidos
     '''
@@ -577,7 +577,7 @@ def limpar_acumulados():
 def get_estatisticas_acumulados():
     '''
     Retorna estatísticas dos acumulados pendentes.
-    
+
     Returns:
         dict: Estatísticas agregadas
     '''

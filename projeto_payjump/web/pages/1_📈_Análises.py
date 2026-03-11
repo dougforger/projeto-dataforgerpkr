@@ -541,22 +541,22 @@ with aba_snowflake:
         df_liga = pd.read_csv(BASE_DIR / 'data' / 'ligas.csv')
 
         df = df.merge(
-            df_clube[['id-clube', 'nome-clube', 'id-liga', 'nome-liga']],
+            df_clube[['clube_id', 'clube_nome', 'liga_id', 'liga_nome']],
             left_on='ID_CLUBE',
-            right_on='id-clube',
+            right_on='clube_id',
             how='left'
-        ).drop(columns=['id-clube'])
+        ).drop(columns=['clube_id'])
 
         df = df.merge(
-            df_liga[['id-liga','handicap', 'moeda']],
-            on='id-liga',
+            df_liga[['liga_id','handicap', 'moeda']],
+            on='liga_id',
             how='left'
         )
 
         df = df.rename(columns={
-            'nome-clube': 'NOME_CLUBE',
-            'id-liga': 'ID_LIGA',
-            'nome-liga': 'NOME_LIGA',
+            'clube_nome': 'NOME_CLUBE',
+            'liga_id': 'ID_LIGA',
+            'liga_nome': 'NOME_LIGA',
             'handicap': 'HANDICAP',
             'moeda': 'MOEDA'
         })
