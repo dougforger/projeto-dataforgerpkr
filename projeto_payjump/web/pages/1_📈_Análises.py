@@ -1,11 +1,11 @@
 import time
 import requests
 import io
-import zipfile
-import shutil
 import streamlit as st
 import pandas as pd
 from pathlib import Path
+
+from utils.arquivo_utils import carregar_xlsx
 # -----------------------------------------------------
 # BIBLIOTECAS PARA GERAR O PDF DO RELATÓRIO
 # -----------------------------------------------------
@@ -246,32 +246,6 @@ def gerar_pdf(protocolo, pares_cash, pares_mtt, df_cash, df_mtt, mesas_comuns_ca
     buffer.seek(0)
     return buffer
 
-def corrigir_xlsx_memoria(arquivo):
-        bytes_original = arquivo.read()
-        buffer_corrigido = io.BytesIO()
-        
-        with zipfile.ZipFile(io.BytesIO(bytes_original), 'r') as z:
-            conteudos = {nome: z.read(nome) for nome in z.namelist()}
-        
-        if 'xl/styles.xml' in conteudos:
-            styles = conteudos['xl/styles.xml'].decode('utf-8')
-            styles = styles.replace('rgb="#', 'rgb="')
-            conteudos['xl/styles.xml'] = styles.encode('utf-8')
-        
-        with zipfile.ZipFile(buffer_corrigido, 'w', zipfile.ZIP_DEFLATED) as z:
-            for nome, conteudo in conteudos.items():
-                z.writestr(nome, conteudo)
-        
-        buffer_corrigido.seek(0)
-        return buffer_corrigido
-
-def carregar_dados_backend(arquivos):
-    dfs = []
-    for arquivo in arquivos:
-        arquivo_corrigido = corrigir_xlsx_memoria(arquivo)
-        df_temp = pd.read_excel(arquivo_corrigido, engine='openpyxl')
-        dfs.append(df_temp)
-    return pd.concat(dfs, ignore_index=True)
 
 # -----------------------------------------------------
 # CRIAÇÃO DAS ABAS DA PÁGINA
@@ -300,7 +274,7 @@ with aba_backend:
             st.rerun()
 
     if upload_files:
-        st.session_state.df_backend = carregar_dados_backend(upload_files)
+        st.session_state.df_backend = carregar_xlsx(upload_files)
         st.session_state.df_backend[['Game ID']] = st.session_state.df_backend['Association'].str.extract(r'Game ID: (\d+)')
         st.session_state.df_backend[['Hand ID']] = st.session_state.df_backend['Association'].str.extract(r'Hand ID: (\d+)')
         colunas_uteis = ['Player ID', 'Player Name', 'Club ID', 'Club Name', 'Union ID', 'Union Name', 'Event', 'Association', 'Game ID', 'Hand ID', 'chip change', 'Game Fee change']
