@@ -1,0 +1,279 @@
+DOUG FORGER PKR — FUNCIONALIDADES DAS PÁGINAS
+===============================================
+Sistema de integridade e segurança para a plataforma Suprema Poker.
+Gerado em: 2026-03-13
+
+
+═══════════════════════════════════════════════════════════════════════════════
+1. HOMEPAGE — início.py
+═══════════════════════════════════════════════════════════════════════════════
+
+Página inicial da aplicação. Apresenta um painel com descrição resumida de
+todas as ferramentas disponíveis, organizadas em três colunas:
+
+  Coluna A:  📈 Análises   +   💲 Ressarcimento
+  Coluna B:  📊 Payjump    +   🌍 Geolocalização
+  Coluna C:  🔐 Gerador de Notificações (em desenvolvimento)
+
+Cada card mostra: descrição geral, lista de recursos e fontes de dados aceitas.
+A sidebar identifica o sistema como "Doug Forger PKR — Sistema de Segurança".
+
+
+═══════════════════════════════════════════════════════════════════════════════
+2. ANÁLISES — pages/1_📈_Análises.py
+═══════════════════════════════════════════════════════════════════════════════
+
+Detecção de conluio e padrões suspeitos entre contas investigadas.
+Organizado em duas abas: Backend e Snowflake.
+
+───────────────────────────────────────────────────────────────────────────────
+ABA BACKEND
+───────────────────────────────────────────────────────────────────────────────
+Fonte de dados: XLSX exportado do backend (histórico de mãos e torneios).
+Aceita múltiplos arquivos simultaneamente — os dados são concatenados.
+
+UPLOAD E PRÉ-PROCESSAMENTO
+  - Upload de um ou mais arquivos XLSX via interface.
+  - Extração automática de Game ID e Hand ID a partir da coluna "Association".
+  - Suporte a torneios satélite: Association no formato "XXXXX_GAMEID"
+    (sem "Game ID:" explícito); o código extrai o Game ID via regex.
+  - Botão para limpar cache e recarregar.
+  - Expander "Visualizar arquivo carregado" para prévia da tabela completa.
+
+SEÇÃO CASH GAME (coluna esquerda)
+  - Filtra linhas com Event == 'gameResult'.
+  - Exibe contador de mãos encontradas.
+  - Tabela de resumo por jogador:
+      Player ID | Player Name | Club Name | Total de Mesas | Ganhos (R$) | Rake (R$)
+  - Filtro interativo por par de jogadores (Jogador A / Jogador B).
+  - Tabela de cruzamento par a par:
+      Jogador A | Jogador B | Mesas em Comum | % do Jogador A | % do Jogador B
+  - Detalhamento por mesa (quando há mesas em comum):
+      Selectbox para escolher mesa.
+      Tabela resumo: ganhos, rake e quantidade de mãos por jogador na mesa.
+      Tabela detalhada linha a linha: Hand ID, jogador, clube, eventos, ganhos.
+
+SEÇÃO TORNEIOS (coluna direita)
+  - Filtra linhas com Event em ['MttPrize', 'SAT MTT Prize'].
+  - Exibe contador de registros de torneio.
+  - Tabela de resumo por jogador:
+      Player ID | Player Name | Club Name | Total de Torneios
+  - Tabela de cruzamento par a par:
+      Jogador A | Jogador B | Torneios em Comum | % do Jogador A | % do Jogador B
+  - Detalhamento por torneio selecionado:
+      Selectbox entre os torneios com inscrição simultânea.
+      Resumo: Prize, KOs, Total por jogador.
+      Histórico linha a linha ordenado por horário (fuso São Paulo, GMT-3).
+
+RELATÓRIO E EXPORTAÇÃO
+  - Campo "Número do Protocolo" para identificar o relatório.
+  - Botão "Gerar Relatório": abre modal com tabela em Markdown e campo de
+    observações (útil para copiar e colar em sistemas de chamado).
+  - Botão "Baixar Relatório em PDF":
+      Seção 1 — Cash Game: resumo por jogador + pares + mesas em comum c/ link.
+      Seção 2 — Torneios: resumo + pares + torneios comuns + detalhamento.
+      Cada tabela possui legenda explicativa em itálico.
+      Nome do arquivo: MESAS-{protocolo}.pdf
+
+───────────────────────────────────────────────────────────────────────────────
+ABA SNOWFLAKE
+───────────────────────────────────────────────────────────────────────────────
+Fonte de dados: CSV exportado do Snowflake com dados de mãos por conta.
+
+UPLOAD E PRÉ-PROCESSAMENTO
+  - Upload de arquivo CSV único.
+  - Merge automático com data/clubes.csv e data/ligas.csv.
+  - Aplicação de multiplicador de moeda por liga (x5).
+  - Remoção automática de linhas de torneio (ID_MODALIDADE >= 100).
+  - Mensagem de sucesso informa total de linhas e linhas removidas.
+  - Expander "Visualizar arquivo carregado" para prévia completa.
+
+COLUNA 1 — RESUMO DOS JOGADORES E MESAS
+  Resumo dos Jogadores:
+    Jogador ID | Jogador Nome | Clube Nome | Total de Mesas | Ganhos (R$) | Rake (R$)
+    (Clube determinado pelo valor mais frequente nos registros do jogador)
+
+  Mesas em Comum:
+    Cruzamento par a par de todos os jogadores.
+    Jogador A | Jogador B | Mesas em Comum | % do Jogador A | % do Jogador B
+
+COLUNA 2 — DISPOSITIVOS E IPs
+  Dispositivos:
+    Tabela com Jogador, Cód. Dispositivo, Dispositivo, Sistema.
+    Alerta automático se algum dispositivo for compartilhado entre contas.
+
+  Endereços IP:
+    Tabela com Jogador, IP, Cidade, Estado, País (via ip-api.com).
+    Cache por sessão para evitar requisições duplicadas.
+    Alerta automático se algum IP for compartilhado entre contas.
+
+COLUNA 3 — GEOLOCALIZAÇÃO GPS
+  Geocodificação reversa de coordenadas GPS via OpenStreetMap Nominatim.
+  Tabela deduplificada: Jogador | Cidade | Estado | País.
+  Alerta se duas ou mais contas tiverem registros na mesma cidade.
+
+DETALHAMENTO POR MESA
+  Selectbox com mesas em comum (ordenadas decrescente).
+  Resumo: ganhos, rake e quantidade de mãos por jogador na mesa.
+  Tabela detalhada: Data, ID Jogador, Jogador, Clube, ID Mão, Ganhos, Rake, IP, País (IP).
+
+EXPORTAÇÃO PDF
+  Campo "Número do Protocolo".
+  Seção 1 — Cash Game: resumo + pares + mesas comuns (com coluna Nome da Mesa).
+  Seção 2 — Dispositivos: lista deduplificada + alerta de compartilhamento.
+  Seção 3 — IPs: lista com localização + alerta de compartilhamento.
+  Seção 4 — Geolocalização GPS: tabela por cidade + alerta de localização comum.
+  Cada tabela possui legenda explicativa em itálico.
+  Nome do arquivo: #{protocolo}.pdf
+
+
+═══════════════════════════════════════════════════════════════════════════════
+3. PAYJUMP — pages/2_📊_Payjump.py
+═══════════════════════════════════════════════════════════════════════════════
+
+Calculadora de ressarcimentos para torneios com reentrada, baseada na
+distribuição proporcional de KOs entre os jogadores.
+
+Fonte de dados: XLSX "MTT Player List" exportado do backend
+  (Game Information > MTT Player List, inserindo o GameID do torneio).
+
+FUNCIONALIDADES
+  - Upload de arquivo XLSX via interface.
+  - Validação: o nome do arquivo deve começar com "MTT Player List".
+  - Correção automática de XLSX malformados (fix no styles.xml do openpyxl).
+  - Exibição da lista completa de jogadores do torneio.
+  - Merge automático com data/clubes.csv para associar clube a cada jogador.
+  - Colunas utilizadas: Player ID, Name, Club ID, Union ID, Rank, prize.
+  - Distribuição proporcional de KOs entre os jogadores classificados.
+  - Cálculo do valor de payjump por jogador.
+  - Geração de strings formatadas para inserção direta no sistema.
+  - Botão para limpar cache e recarregar.
+
+
+═══════════════════════════════════════════════════════════════════════════════
+4. GERADOR DE NOTIFICAÇÕES — pages/3_🔐_Gerador_de_Notificações.py
+═══════════════════════════════════════════════════════════════════════════════
+
+EM DESENVOLVIMENTO — funcionalidade ainda não disponível.
+
+Previsão de recursos:
+  - Geração de notificações multilíngues (português, inglês, espanhol).
+  - Templates parametrizados por tipo de ocorrência de segurança.
+  - Merge automático com dados de clube e liga para personalização da mensagem.
+  - Integração com cadastros de ligas e idiomas.
+
+Fontes de dados previstas: data/clubes.csv · data/ligas.csv
+
+
+═══════════════════════════════════════════════════════════════════════════════
+5. RESSARCIMENTO — pages/4_💲_Ressarcimento.py
+═══════════════════════════════════════════════════════════════════════════════
+
+Cálculo e distribuição de ressarcimentos para vítimas de contas fraudulentas
+identificadas na plataforma.
+
+Fonte de dados: CSV exportado do Snowflake com colunas:
+  JOGADOR_ID, JOGADOR_NOME, CLUBE_ID, LIGA_ID, MESA_ID, MAO_ID,
+  GANHOS_REAIS, FRAUDADOR
+
+UPLOAD E VALIDAÇÃO
+  - Upload de arquivo CSV.
+  - Validação automática das colunas obrigatórias.
+  - Prévia dos primeiros 10 registros via expander.
+
+GESTÃO DE FRAUDADORES
+  - Banco SQLite local (data/ressarcimento.db) com lista de fraudadores.
+  - Carregamento automático dos IDs conhecidos ao abrir a página.
+  - Expander para visualizar lista completa de fraudadores registrados.
+  - Adição de novos fraudadores em lote.
+  - Remoção de fraudadores do banco.
+
+CÁLCULO DE RESSARCIMENTO
+  - Identificação das mãos afetadas por contas fraudadoras.
+  - Cálculo do saldo líquido por fraudador (ganhos sobre as vítimas).
+  - Distribuição proporcional do valor a ressarcir entre as vítimas.
+  - Separação entre:
+      Imediatos  — valores a pagar nesta rodada.
+      Acumulados — valores parciais a acumular para rodadas futuras.
+      Futuros    — valores aguardando confirmação.
+
+EXPORTAÇÃO
+  - Registro histórico de ressarcimentos no banco SQLite.
+  - Exportação Excel com múltiplas abas por categoria de pagamento.
+
+
+═══════════════════════════════════════════════════════════════════════════════
+6. GEOLOCALIZAÇÃO — pages/5_🌍_Geolocalização.py
+═══════════════════════════════════════════════════════════════════════════════
+
+Análise geográfica standalone de contas investigadas a partir de relatórios
+de IP e/ou GPS exportados diretamente do backend.
+
+Fonte de dados:
+  - IP Report XLSX  (contém coluna "IP address")
+  - GPS Report XLSX (contém colunas "Coordinate X" / "GPS coordinate Y")
+  O tipo do arquivo é detectado automaticamente pelas colunas presentes.
+
+UPLOAD E PRÉ-PROCESSAMENTO
+  - Upload de até dois arquivos XLSX (IP Report e GPS Report).
+  - Detecção automática do tipo (IP ou GPS) por colunas presentes.
+  - Normalização de colunas para formato interno padronizado.
+  - Cache por sessão para IPs e coordenadas já consultados.
+
+GEOLOCALIZAÇÃO DE IPs (ip-api.com)
+  - Requisições em lote de até 100 IPs por chamada.
+  - Campos retornados: cidade, estado, país, latitude, longitude.
+  - Cache in-memory por sessão para evitar repetição de chamadas.
+
+GEOCODIFICAÇÃO REVERSA DE GPS (OpenStreetMap Nominatim)
+  - Conversão de coordenadas lat/lon para endereço textual.
+  - Rate limiting respeitado (1 req/s conforme política do Nominatim).
+  - Cache in-memory por sessão.
+
+MAPA INTERATIVO (Folium)
+  - Exibido na interface via streamlit_folium.
+  - Marcadores circulares coloridos por conta (paleta de até 10 cores).
+  - Cada cor representa um JOGADOR_ID diferente.
+  - Popup com nome do jogador, cidade, estado e país ao clicar no marcador.
+  - Tooltip com nome do jogador ao passar o mouse.
+  - Controle de camadas: 🗺️ Ruas (OpenStreetMap) / 🛰️ Satélite (Esri).
+    (Alternância via JavaScript no browser — sem rerun do Streamlit.)
+
+DETECÇÃO DE ALERTAS
+  - Múltiplos países: mesmo jogador logou de países diferentes.
+  - IPs compartilhados: mesmo IP usado por contas distintas.
+  - Múltiplas cidades: mesmo jogador logou de cidades diferentes.
+  - Dispositivos compartilhados: mesmo dispositivo em contas distintas.
+
+EXPORTAÇÃO PDF (landscape A4)
+  - Mapa estático embutido (gerado via staticmap).
+  - Seção de alertas com ícone de criticidade.
+  - Tabela resumo de IPs: Jogador | IP | Cidade | Estado | País.
+    (Legenda: "Registros únicos de endereços IP por conta...")
+  - Tabela resumo de GPS: Jogador | Cidade | Estado | País.
+    (Legenda: "Registros únicos de localização por coordenadas GPS...")
+  - As tabelas de alerta possuem descrição própria (sem legenda adicional).
+  - Campo "Número do Protocolo" para identificar o relatório.
+
+
+═══════════════════════════════════════════════════════════════════════════════
+OBSERVAÇÕES GERAIS
+═══════════════════════════════════════════════════════════════════════════════
+
+PDFS
+  - Todos os PDFs usam fonte Calibri Light (normal, bold, italic, bold-italic).
+  - Todas as tabelas possuem legenda explicativa em itálico cinza antes delas.
+  - Os PDFs são gerados em memória (bytes) e oferecidos como download.
+  - O cabeçalho inclui logo, data de geração e número de protocolo.
+
+DADOS ESTÁTICOS (atualização manual)
+  - data/clubes.csv  — clube_id, clube_nome, liga_id, liga_nome
+  - data/ligas.csv   — liga_id, nome-liga, idioma, handicap, moeda, taxa-liga
+
+BANCO DE DADOS
+  - data/ressarcimento.db (SQLite) — criado automaticamente ao iniciar.
+  - Contém: fraudadores_identificados, historico_ressarcimentos, acumulados.
+
+ARQUIVOS XLSX MALFORMADOS
+  - Exportações do backend frequentemente têm styles.xml corrompido.
+  - O módulo utils/arquivo_utils.py corrige automaticamente antes de processar.

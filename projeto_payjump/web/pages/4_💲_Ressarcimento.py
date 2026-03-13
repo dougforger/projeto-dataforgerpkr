@@ -967,13 +967,7 @@ else:
         - `JOGADOR_NOME`: Nome do jogador
         - `CLUBE_ID`: ID do clube
         - `LIGA_ID`: ID da liga
-        - `game_id`: ID do mesa
         - `MAO_ID`: ID da mão
         - `GANHOS_REAIS`: Ganho/Perda em reais
-        - `rake_reais`: Rake gerado em reais
-        - `blind_reais`: Valor do big blind em reais
-        - `ante_por_jogador_reais`: Valor do ante em reais
-        - `jogador_na_hand`: Quantidade de jogadores em cada mão
-        - `limite_calculado_reais`: Valor mínimo que é considerado para o bot ter influenciado na mão
         - `FRAUDADOR`: Indica se está na lista de fraudadores (TRUE/FALSE)
     """)

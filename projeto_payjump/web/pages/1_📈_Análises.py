@@ -293,9 +293,13 @@ with aba_snowflake:
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.subheader('Jogadores encontrados no arquivo')
+            st.subheader('Resumo dos jogadores')
             resumo_jogadores = resumo_por_jogador(df_sf)
-            st.dataframe(resumo_jogadores, hide_index=True, width='stretch')
+            st.dataframe(resumo_jogadores, hide_index=True, width='stretch',
+                         column_config={
+                             'Ganhos (R$)': st.column_config.NumberColumn(format='localized'),
+                             'Rake (R$)':   st.column_config.NumberColumn(format='localized'),
+                         })
 
             st.subheader('Mesas em comum')
             df_pares_sf, mesas_comuns_sf = detectar_mesas_comuns(df_sf, resumo_jogadores)
@@ -304,18 +308,34 @@ with aba_snowflake:
         with col2:
             st.subheader('Dispositivos')
             df_dispositivos, codigos_compartilhados = detectar_dispositivos_compartilhados(df_sf)
-            st.dataframe(df_dispositivos, hide_index=True, width='stretch')
+            st.dataframe(
+                df_dispositivos.rename(columns={
+                    'NOME_JOGADOR':      'Jogador',
+                    'CODIGO_DISPOSITIVO':'Cód. Dispositivo',
+                    'DISPOSITIVO':       'Dispositivo',
+                    'SISTEMA':           'Sistema',
+                }),
+                hide_index=True, width='stretch',
+            )
             if codigos_compartilhados:
                 st.warning(f'⚠️ {len(codigos_compartilhados)} dispositivo(s) compartilhado(s) entre os jogadores.')
             else:
                 st.success('✅ Nenhum dispositivo compartilhado.')
 
-            st.subheader("IP's")
+            st.subheader('Endereços IP')
             df_ips_bruto, ips_compartilhados = detectar_ips_compartilhados(df_sf)
             if 'ip_cache' not in st.session_state:
                 st.session_state.ip_cache = {}
             df_ips_com_localizacao = buscar_localizacao_ips(df_ips_bruto, st.session_state.ip_cache)
-            st.dataframe(df_ips_com_localizacao, hide_index=True, width='stretch')
+            st.dataframe(
+                df_ips_com_localizacao.rename(columns={
+                    'NOME_JOGADOR': 'Jogador',
+                    'CIDADE':       'Cidade',
+                    'ESTADO':       'Estado',
+                    'PAIS':         'País',
+                }),
+                hide_index=True, width='stretch',
+            )
             if ips_compartilhados:
                 st.warning(f'⚠️ {len(ips_compartilhados)} IP(s) compartilhado(s) entre os jogadores.')
             else:
@@ -346,7 +366,13 @@ with aba_snowflake:
                 st.info('Jogadores sem registro de localização por GPS.')
             else:
                 st.dataframe(
-                    df_geo[['NOME_JOGADOR', 'CIDADE', 'ESTADO', 'PAIS']].drop_duplicates(),
+                    df_geo[['NOME_JOGADOR', 'CIDADE', 'ESTADO', 'PAIS']].drop_duplicates()
+                    .rename(columns={
+                        'NOME_JOGADOR': 'Jogador',
+                        'CIDADE':       'Cidade',
+                        'ESTADO':       'Estado',
+                        'PAIS':         'País',
+                    }),
                     hide_index=True, width='stretch',
                 )
 
@@ -367,7 +393,7 @@ with aba_snowflake:
 
         df_mesa_resumo = (
             df_sf[df_sf['ID_MESA'] == mesa_selecionada]
-            .groupby(['NOME_JOGADOR', 'NOME_CLUBE', 'ID_MESA'])
+            .groupby(['ID_JOGADOR','NOME_JOGADOR', 'NOME_CLUBE', 'ID_MESA'])
             .agg(
                 TOTAL_GANHOS=('GANHOS', 'sum'),
                 TOTAL_RAKE  =('RAKE',   'sum'),
@@ -375,27 +401,52 @@ with aba_snowflake:
             ).reset_index()
         )
         st.dataframe(
-            df_mesa_resumo[['NOME_JOGADOR', 'NOME_CLUBE', 'TOTAL_GANHOS', 'TOTAL_RAKE', 'QNT_MAOS']],
+            df_mesa_resumo[['ID_JOGADOR','NOME_JOGADOR', 'NOME_CLUBE', 'TOTAL_GANHOS', 'TOTAL_RAKE', 'QNT_MAOS']]
+            .rename(columns={
+                'NOME_JOGADOR': 'Jogador',
+                'NOME_CLUBE':   'Clube',
+                'TOTAL_GANHOS': 'Ganhos (R$)',
+                'TOTAL_RAKE':   'Rake (R$)',
+                'QNT_MAOS':     'Qtd. Mãos',
+            }),
             hide_index=True, width='stretch',
+            column_config={
+                'Ganhos (R$)': st.column_config.NumberColumn(format='localized'),
+                'Rake (R$)':   st.column_config.NumberColumn(format='localized'),
+            },
         )
         df_mesa = df_sf[df_sf['ID_MESA'] == mesa_selecionada].sort_values(['ID_MAO', 'ID_JOGADOR']).copy()
         st.dataframe(
-            df_mesa[['DATA', 'NOME_JOGADOR', 'NOME_CLUBE', 'ID_MAO', 'GANHOS', 'RAKE', 'IP', 'IP_PAIS']],
+            df_mesa[['DATA', 'ID_JOGADOR', 'NOME_JOGADOR', 'NOME_CLUBE', 'ID_MAO', 'GANHOS', 'RAKE', 'IP', 'IP_PAIS']]
+            .rename(columns={
+                'DATA':         'Data',
+                'ID_JOGADOR':   'ID Jogador',
+                'NOME_JOGADOR': 'Jogador',
+                'NOME_CLUBE':   'Clube',
+                'ID_MAO':       'ID Mão',
+                'GANHOS':       'Ganhos (R$)',
+                'RAKE':         'Rake (R$)',
+                'IP_PAIS':      'País (IP)',
+            }),
             hide_index=True, width='stretch',
+            column_config={
+                'Ganhos (R$)': st.column_config.NumberColumn(format='localized'),
+                'Rake (R$)':   st.column_config.NumberColumn(format='localized'),
+            },
         )
 
         # --------------------------------------------------
         # PDF
         # --------------------------------------------------
         resumo_sf = (
-            df_sf.groupby(['NOME_JOGADOR', 'NOME_CLUBE']).agg(
+            df_sf.groupby(['ID_JOGADOR','NOME_JOGADOR', 'NOME_CLUBE']).agg(
                 **{
                     'Total de Mesas': ('ID_MESA', 'nunique'),
                     'Ganhos (R$)':    ('GANHOS',  'sum'),
                     'Rake (R$)':      ('RAKE',    'sum'),
                 }
             ).reset_index()
-            .rename(columns={'NOME_JOGADOR': 'Player Name', 'NOME_CLUBE': 'Club Name'})
+            .rename(columns={'ID_JOGADOR': 'Player ID','NOME_JOGADOR': 'Player Name', 'NOME_CLUBE': 'Club Name'})
         )
         df_sf_norm = df_sf.rename(columns={'ID_MESA': 'Game ID', 'ID_JOGADOR': 'Player ID'})
 

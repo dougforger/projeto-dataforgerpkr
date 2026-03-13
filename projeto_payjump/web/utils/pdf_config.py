@@ -2,7 +2,7 @@ from pathlib import Path
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_JUSTIFY, TA_LEFT
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape as _landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.lib.utils import ImageReader
@@ -43,13 +43,16 @@ registerFontFamily(
 styles = getSampleStyleSheet()
 styles['Title'].alignment = TA_LEFT
 
-LARGURA_PAGINA = A4[0] - 4 * cm
-ALTURA_PAGINA  = A4[1] - 3 * cm
+LARGURA_PAGINA          = A4[0] - 4 * cm
+ALTURA_PAGINA           = A4[1] - 3 * cm
+LARGURA_PAGINA_PAISAGEM = _landscape(A4)[0] - 4 * cm
 
 COLS_2 = [LARGURA_PAGINA * 0.50] * 2
 COLS_3 = [LARGURA_PAGINA * 0.30, LARGURA_PAGINA * 0.30, LARGURA_PAGINA * 0.40]
 COLS_4 = [LARGURA_PAGINA * 0.25] * 4
 COLS_5 = [LARGURA_PAGINA * 0.20] * 5
+COLS_6 = [LARGURA_PAGINA * 0.125, LARGURA_PAGINA * 0.125, LARGURA_PAGINA * 0.3,
+          LARGURA_PAGINA * 0.15, LARGURA_PAGINA * 0.15, LARGURA_PAGINA * 0.15] 
 
 ESTILO_TABELA = TableStyle([
     ('FONTNAME',   (0, 0), (-1,  0), FONTE_NEGRITO_ITALICO),
@@ -69,6 +72,17 @@ ESTILO_PARAGRAFO = ParagraphStyle(
     firstLineIndent=20,
     wordWrap='LTR',
     fontName=FONTE_NORMAL,
+)
+
+ESTILO_LEGENDA = ParagraphStyle(
+    'legenda_tabela',
+    parent=styles['Normal'],
+    alignment=TA_JUSTIFY,
+    fontName=FONTE_ITALICO,
+    fontSize=10,
+    textColor=colors.HexColor('#555555'),
+    spaceBefore=4,
+    spaceAfter=2,
 )
 
 LOGO = ImageReader(BASE_DIR / 'img' / 'LOGO PRETO.png')

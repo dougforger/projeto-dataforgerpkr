@@ -24,22 +24,26 @@ def buscar_localizacao_ips(df_ips: pd.DataFrame, cache_ips: dict) -> pd.DataFram
     for i in range(0, len(ips_novos), LOTE_IP_API):
         lote = ips_novos[i:i + LOTE_IP_API]
         try:
-            payload = [{'query': ip, 'fields': 'query,city,regionName,country'} for ip in lote]
+            payload = [{'query': ip, 'fields': 'query,city,regionName,country,lat,lon'} for ip in lote]
             resp    = requests.post(URL_IP_API, json=payload, timeout=TIMEOUT_IP_API)
             for item in resp.json():
                 cache_ips[item['query']] = {
-                    'CIDADE': item.get('city'),
-                    'ESTADO': item.get('regionName'),
-                    'PAIS':   item.get('country'),
+                    'CIDADE':    item.get('city'),
+                    'ESTADO':    item.get('regionName'),
+                    'PAIS':      item.get('country'),
+                    'LATITUDE':  item.get('lat'),
+                    'LONGITUDE': item.get('lon'),
                 }
         except Exception:
             for ip in lote:
-                cache_ips[ip] = {'CIDADE': None, 'ESTADO': None, 'PAIS': None}
+                cache_ips[ip] = {'CIDADE': None, 'ESTADO': None, 'PAIS': None, 'LATITUDE': None, 'LONGITUDE': None}
 
     df_ips = df_ips.copy()
-    df_ips['CIDADE'] = df_ips['IP'].map(lambda x: cache_ips.get(x, {}).get('CIDADE'))
-    df_ips['ESTADO'] = df_ips['IP'].map(lambda x: cache_ips.get(x, {}).get('ESTADO'))
-    df_ips['PAIS']   = df_ips['IP'].map(lambda x: cache_ips.get(x, {}).get('PAIS'))
+    df_ips['CIDADE']    = df_ips['IP'].map(lambda x: cache_ips.get(x, {}).get('CIDADE'))
+    df_ips['ESTADO']    = df_ips['IP'].map(lambda x: cache_ips.get(x, {}).get('ESTADO'))
+    df_ips['PAIS']      = df_ips['IP'].map(lambda x: cache_ips.get(x, {}).get('PAIS'))
+    df_ips['LATITUDE']  = df_ips['IP'].map(lambda x: cache_ips.get(x, {}).get('LATITUDE'))
+    df_ips['LONGITUDE'] = df_ips['IP'].map(lambda x: cache_ips.get(x, {}).get('LONGITUDE'))
     return df_ips
 
 

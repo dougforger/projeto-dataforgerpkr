@@ -13,6 +13,8 @@ from .pdf_config import (
     COLS_3,
     COLS_4,
     COLS_5,
+    COLS_6,
+    ESTILO_LEGENDA,
     LIMITE_MODALIDADE_CASH,
     MULTIPLICADOR_MOEDA,
     styles,
@@ -65,22 +67,37 @@ def preprocessar_dados(
 # -----------------------------------------------------
 
 def resumo_por_jogador(df: pd.DataFrame) -> pd.DataFrame:
-    """Agrupa por ID_JOGADOR/NOME_JOGADOR e conta mesas únicas.
-    Retorna df com colunas ['ID', 'Nome', 'Total de Mesas']."""
+    """Agrupa por jogador e agrega mesas únicas, ganhos e rake.
+    Retorna df com colunas ['Jogador ID', 'Jogador Nome', 'Clube Nome',
+    'Total de Mesas', 'Ganhos (R$)', 'Rake (R$)']."""
     resumo = (
-        df.groupby(['ID_JOGADOR', 'NOME_JOGADOR'])['ID_MESA']
-        .nunique()
+        df.groupby(['ID_JOGADOR', 'NOME_JOGADOR'])
+        .agg(**{
+            'Total de Mesas': ('ID_MESA', 'nunique'),
+            'Ganhos (R$)':    ('GANHOS',  'sum'),
+            'Rake (R$)':      ('RAKE',    'sum'),
+        })
         .reset_index()
     )
-    resumo.columns = ['ID', 'Nome', 'Total de Mesas']
-    return resumo
+    clube_por_jogador = (
+        df.groupby('ID_JOGADOR')['NOME_CLUBE']
+        .agg(lambda x: x.mode()[0] if not x.empty else '')
+        .reset_index()
+    )
+    resumo = resumo.merge(clube_por_jogador, on='ID_JOGADOR', how='left')
+    resumo = resumo.rename(columns={
+        'ID_JOGADOR':   'Jogador ID',
+        'NOME_JOGADOR': 'Jogador Nome',
+        'NOME_CLUBE':   'Clube Nome',
+    })
+    return resumo[['Jogador ID', 'Jogador Nome', 'Clube Nome', 'Total de Mesas', 'Ganhos (R$)', 'Rake (R$)']]
 
 
 def detectar_mesas_comuns(df: pd.DataFrame, resumo: pd.DataFrame):
     """Compara todos os pares de jogadores e detecta mesas em comum.
     Retorna (df_pares_com_percentual, conjunto_mesas_comuns)."""
     mesas_por_jogador = df.groupby('ID_JOGADOR')['ID_MESA'].apply(set)
-    jogadores         = resumo['ID'].tolist()
+    jogadores         = resumo['Jogador ID'].tolist()
     pares             = []
     mesas_comuns_total = set()
 
@@ -90,8 +107,8 @@ def detectar_mesas_comuns(df: pd.DataFrame, resumo: pd.DataFrame):
             mesas_comuns = mesas_por_jogador[a] & mesas_por_jogador[b]
             mesas_comuns_total |= mesas_comuns
             total_comuns = len(mesas_comuns)
-            total_a = resumo.loc[resumo['ID'] == a, 'Total de Mesas'].values[0]
-            total_b = resumo.loc[resumo['ID'] == b, 'Total de Mesas'].values[0]
+            total_a = resumo.loc[resumo['Jogador ID'] == a, 'Total de Mesas'].values[0]
+            total_b = resumo.loc[resumo['Jogador ID'] == b, 'Total de Mesas'].values[0]
             pares.append({
                 'Jogador A':      df.loc[df['ID_JOGADOR'] == a, 'NOME_JOGADOR'].values[0],
                 'Jogador B':      df.loc[df['ID_JOGADOR'] == b, 'NOME_JOGADOR'].values[0],
@@ -142,15 +159,16 @@ def gerar_pdf_snowflake(
     story.append(Paragraph('Cruzamento em Cash Games', styles['Heading1']))
 
     if not df_pares.empty:
-        linhas_resumo = [['Jogador', 'Clube', 'Total de Mesas', 'Ganhos (R$)', 'Rake (R$)']]
+        linhas_resumo = [['ID', 'Jogador', 'Clube', 'Total de Mesas', 'Ganhos (R$)', 'Rake (R$)']]
         for _, row in resumo_sf.iterrows():
             linhas_resumo.append([
-                row['Player Name'], row['Club Name'],
+                row['Player ID'], row['Player Name'], row['Club Name'],
                 row['Total de Mesas'],
                 f'R$ {row["Ganhos (R$)"]:.2f}',
                 f'R$ {row["Rake (R$)"]:.2f}',
             ])
-        adicionar_tabela(story, linhas_resumo, COLS_5)
+        story.append(Paragraph('Ganhos líquidos e rake gerado por cada conta nas mesas de cash game identificadas.', ESTILO_LEGENDA))
+        adicionar_tabela(story, linhas_resumo, COLS_6)
 
         linhas_pares = [['Jogador A', 'Jogador B', 'Mesas em Comum', '% do Jogador A', '% do Jogador B']]
         for _, row in df_pares.iterrows():
@@ -158,8 +176,10 @@ def gerar_pdf_snowflake(
                 row['Jogador A'], row['Jogador B'], row['Mesas em Comum'],
                 f'{row["% do Jogador A"]:.2f}%', f'{row["% do Jogador B"]:.2f}%',
             ])
+        story.append(Paragraph('Cruzamento par a par: número de mesas compartilhadas e percentual em relação ao total de cada conta.', ESTILO_LEGENDA))
         adicionar_tabela(story, linhas_pares, COLS_5)
-        adicionar_tabela(story, montar_tabela_comuns(df_sf_norm, mesas_comuns), COLS_3)
+        story.append(Paragraph('Mesas de cash game em comum, com nome da mesa, IDs dos jogadores e link para o histórico de mãos.', ESTILO_LEGENDA))
+        adicionar_tabela(story, montar_tabela_comuns(df_sf_norm, mesas_comuns, coluna_nome='NOME_MESA'), COLS_4)
     else:
         story.append(Paragraph('Sem registro de cash game.', styles['Normal']))
 
@@ -179,6 +199,7 @@ def gerar_pdf_snowflake(
             str(row['DISPOSITIVO']),
             str(row['SISTEMA']),
         ])
+    story.append(Paragraph('Dispositivos únicos registrados por cada conta. Dispositivos compartilhados entre contas distintas são sinalizados abaixo.', ESTILO_LEGENDA))
     adicionar_tabela(story, linhas_disp, COLS_4, espacamento=8)
     adicionar_alerta_compartilhamento(
         story, df_dispositivos,
@@ -202,6 +223,7 @@ def gerar_pdf_snowflake(
             str(row.get('ESTADO') or '—'),
             str(row.get('PAIS')   or '—'),
         ])
+    story.append(Paragraph('Endereços IP únicos por conta com localização geográfica estimada. IPs compartilhados entre contas distintas são sinalizados abaixo.', ESTILO_LEGENDA))
     adicionar_tabela(story, linhas_ip, COLS_5, espacamento=8)
     adicionar_alerta_compartilhamento(
         story, df_ips,
@@ -232,6 +254,7 @@ def gerar_pdf_snowflake(
                 str(row.get('ESTADO') or '—'),
                 str(row.get('PAIS')   or '—'),
             ])
+        story.append(Paragraph('Localização geográfica das contas obtida via coordenadas GPS registradas nos dispositivos.', ESTILO_LEGENDA))
         adicionar_tabela(story, linhas_geo, COLS_4, espacamento=8)
 
         cidades_comuns = df_geo_dedup.groupby('CIDADE')['NOME_JOGADOR'].nunique()

@@ -7,7 +7,7 @@ from .pdf_builder import (
     inicializar_pdf,
     montar_tabela_comuns,
 )
-from .pdf_config import COLS_3, COLS_5, COLS_4, ESTILO_PARAGRAFO, styles
+from .pdf_config import COLS_3, COLS_4, COLS_5, COLS_6, ESTILO_LEGENDA, ESTILO_PARAGRAFO, styles
 
 
 # -----------------------------------------------------
@@ -142,13 +142,14 @@ def gerar_pdf(
     story.append(Paragraph('Cruzamento em Cash Games', styles['Heading1']))
 
     if not df_pares_cash.empty:
-        linhas_resumo = [['Jogador', 'Clube', 'Total de Mesas', 'Ganhos (R$)', 'Rake (R$)']]
+        linhas_resumo = [['ID', 'Jogador', 'Clube', 'Total de Mesas', 'Ganhos (R$)', 'Rake (R$)']]
         for _, row in resumo_cash.iterrows():
             linhas_resumo.append([
-                row['Player Name'], row['Club Name'], row['Total de Mesas'],
+                row['Player ID'], row['Player Name'], row['Club Name'], row['Total de Mesas'],
                 f'R$ {row["Ganhos (R$)"]:.2f}', f'R$ {row["Rake (R$)"]:.2f}',
             ])
-        adicionar_tabela(story, linhas_resumo, COLS_5)
+        story.append(Paragraph('Ganhos líquidos e rake gerado por cada conta nas mesas de cash game identificadas.', ESTILO_LEGENDA))
+        adicionar_tabela(story, linhas_resumo, COLS_6)
 
         linhas_pares = [['Jogador A', 'Jogador B', 'Mesas em Comum', '% do Jogador A', '% do Jogador B']]
         for _, row in df_pares_cash.iterrows():
@@ -156,7 +157,9 @@ def gerar_pdf(
                 row['Jogador A'], row['Jogador B'], row['Mesas em Comum'],
                 f'{row["% do Jogador A"]:.2f}%', f'{row["% do Jogador B"]:.2f}%',
             ])
+        story.append(Paragraph('Cruzamento par a par: número de mesas compartilhadas e percentual em relação ao total de cada conta.', ESTILO_LEGENDA))
         adicionar_tabela(story, linhas_pares, COLS_5)
+        story.append(Paragraph('Mesas de cash game em comum, com IDs dos jogadores e link para o histórico de mãos.', ESTILO_LEGENDA))
         adicionar_tabela(story, montar_tabela_comuns(df_cash, mesas_comuns_cash), COLS_3)
     else:
         story.append(Paragraph('Sem registro de cash game', styles['Normal']))
@@ -179,10 +182,11 @@ def gerar_pdf(
         ))
         story.append(Spacer(1, 12))
 
-        linhas_resumo_mtt = [['Jogador', 'Clube', 'Total de Torneios']]
+        linhas_resumo_mtt = [['ID', 'Jogador', 'Clube', 'Total de Torneios']]
         for _, row in resumo_mtt.iterrows():
-            linhas_resumo_mtt.append([row['Player Name'], row['Club Name'], row['Total de Torneios']])
-        adicionar_tabela(story, linhas_resumo_mtt, COLS_3)
+            linhas_resumo_mtt.append([row['Player ID'], row['Player Name'], row['Club Name'], row['Total de Torneios']])
+        story.append(Paragraph('Quantidade de torneios em que cada conta participou no período analisado.', ESTILO_LEGENDA))
+        adicionar_tabela(story, linhas_resumo_mtt, COLS_4)
 
         linhas_pares_mtt = [['Jogador A', 'Jogador B', 'Torneios em Comum', '% do Jogador A', '% do Jogador B']]
         for _, row in df_pares_mtt.iterrows():
@@ -190,7 +194,9 @@ def gerar_pdf(
                 row['Jogador A'], row['Jogador B'], row['Torneios em Comum'],
                 f'{row["% do Jogador A"]:.2f}%', f'{row["% do Jogador B"]:.2f}%',
             ])
+        story.append(Paragraph('Cruzamento par a par: número de torneios com inscrição simultânea e percentual em relação ao total de cada conta.', ESTILO_LEGENDA))
         adicionar_tabela(story, linhas_pares_mtt, COLS_5)
+        story.append(Paragraph('Torneios com inscrição simultânea das contas analisadas, com link para verificação no sistema.', ESTILO_LEGENDA))
         adicionar_tabela(story, montar_tabela_comuns(df_mtt, torneios_comuns), COLS_3)
     else:
         story.append(Paragraph('Sem registros de torneios.', styles['Normal']))
@@ -209,6 +215,7 @@ def gerar_pdf(
                 row['Player Name'], row['Club Name'],
                 f'{row["Prize"]:.2f}', f'{row["KO\'s"]:.2f}', f'{row["Total"]:.2f}',
             ])
+        story.append(Paragraph('Prêmio, eliminações (KO) e total recebido por cada conta no torneio selecionado.', ESTILO_LEGENDA))
         adicionar_tabela(story, linhas_resumo_torneio, COLS_5)
 
         if df_torneio is not None and not df_torneio.empty:
@@ -229,6 +236,7 @@ def gerar_pdf(
                         row['Player Name'], row['Club Name'],
                         row['Event'], f'{row["chip change"]:.2f}',
                     ])
+            story.append(Paragraph('Registro linha a linha dos eventos de premiação no torneio selecionado, ordenados por horário (fuso São Paulo).', ESTILO_LEGENDA))
             adicionar_tabela(story, linhas_detalhe, COLS_5 if tem_horario else COLS_4)
 
     story.append(Spacer(1, 12))

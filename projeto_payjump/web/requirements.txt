@@ -4,3 +4,8 @@ openpyxl
 pyperclip
 reportlab
 sqlalchemy
+requests
+pydeck
+staticmap
+folium
+streamlit-folium

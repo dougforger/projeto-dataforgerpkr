@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "DataForge Web (Streamlit)",
+      "runtimeExecutable": "streamlit",
+      "runtimeArgs": ["run", "início.py"],
+      "port": 8501
+    }
+  ]
+}

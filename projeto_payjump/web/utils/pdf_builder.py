@@ -15,26 +15,38 @@ def _callback_marca_dagua(logo):
     def _desenhar(canvas, doc):
         canvas.saveState()
         canvas.setFillAlpha(0.1)
-        larg_pag, alt_pag = A4
-        x = (larg_pag - LARGURA_PAGINA) / 2
-        y = (alt_pag  - ALTURA_PAGINA)  / 2
+        from reportlab.lib.units import cm as _cm
+        larg_pag, alt_pag = doc.pagesize
+        larg = larg_pag - 4 * _cm
+        alt  = alt_pag  - 3 * _cm
+        x    = (larg_pag - larg) / 2
+        y    = (alt_pag  - alt)  / 2
         canvas.drawImage(
             logo, x, y,
-            width=LARGURA_PAGINA, height=ALTURA_PAGINA,
+            width=larg, height=alt,
             mask='auto', preserveAspectRatio=True,
         )
         canvas.restoreState()
     return _desenhar
 
 
-def inicializar_pdf(protocolo: str):
-    """Cria buffer, doc e story com título e fonte padrão já configurados."""
+def inicializar_pdf(protocolo: str, paisagem: bool = False, titulo_completo: str | None = None):
+    """Cria buffer, doc e story com título e fonte padrão já configurados.
+
+    Args:
+        protocolo: Número do protocolo exibido no título (ignorado se titulo_completo fornecido).
+        paisagem: Se True, usa orientação landscape (A4 horizontal).
+        titulo_completo: Quando fornecido, substitui o título padrão 'Protocolo #xxx'.
+    """
+    from reportlab.lib.pagesizes import landscape
     for style in styles.byName.values():
         style.fontName = FONTE_NORMAL
-    buffer = io.BytesIO()
-    doc    = SimpleDocTemplate(buffer, pagesize=A4)
-    story  = [
-        Paragraph(f'Protocolo #{protocolo}', styles['Title']),
+    buffer       = io.BytesIO()
+    pagesize     = landscape(A4) if paisagem else A4
+    doc          = SimpleDocTemplate(buffer, pagesize=pagesize)
+    titulo_texto = titulo_completo if titulo_completo is not None else f'Protocolo #{protocolo}'
+    story        = [
+        Paragraph(titulo_texto, styles['Title']),
         Spacer(1, 12),
     ]
     return buffer, doc, story
@@ -66,24 +78,32 @@ def adicionar_alerta_compartilhamento(
         story.append(Paragraph(msg_ok, styles['Normal']))
 
 
-def montar_tabela_comuns(df, mesas_comuns: set) -> list:
-    """Monta as linhas de tabela com ID da mesa, jogadores e link para hand history."""
+def montar_tabela_comuns(df, mesas_comuns: set, coluna_nome: str | None = None) -> list:
+    """Monta as linhas de tabela com ID da mesa, jogadores e link para hand history.
+    Se coluna_nome for fornecida, adiciona uma coluna com o nome da mesa como segunda coluna."""
     estilo_celula = ParagraphStyle('celula', parent=styles['Normal'], wordWrap='LTR')
-    dados = [['ID Mesa', 'Jogadores', 'Link']]
-    for mesa in sorted(mesas_comuns, reverse=True):
-        df_mesa       = df[df['Game ID'] == mesa]
+    header = (['ID Mesa', 'Nome da Mesa', 'Jogadores', 'Link'] if coluna_nome
+              else ['ID Mesa', 'Jogadores', 'Link'])
+    dados = [header]
+    for id_mesa in sorted(mesas_comuns, reverse=True):
+        df_mesa       = df[df['Game ID'] == id_mesa]
         ids_jogadores = df_mesa['Player ID'].unique().tolist()
         ids_url       = '&'.join(str(pid) for pid in ids_jogadores)
         link = (
             f'https://console.supremapoker.net/game/GameDetail'
-            f'?backupOnly=0&dateFilter=16&matchID={mesa}'
+            f'?backupOnly=0&dateFilter=16&matchID={id_mesa}'
             f'&page=1&pageSize=100&playerIDs={ids_url}'
         )
-        dados.append([
-            Paragraph(str(mesa), estilo_celula),
+        linha = []
+        linha.append(Paragraph(str(id_mesa), estilo_celula))
+        if coluna_nome:
+            nome = df_mesa[coluna_nome].iloc[0] if not df_mesa.empty else '—'
+            linha.append(Paragraph(str(nome), estilo_celula))
+        linha.extend([
             Paragraph(', '.join(str(pid) for pid in ids_jogadores), estilo_celula),
             Paragraph(f'<a href="{link}" color="blue"><u>Link para o Hand History</u></a>', estilo_celula),
         ])
+        dados.append(linha)
     return dados
 
 
