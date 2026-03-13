@@ -299,30 +299,35 @@ with tab_planilha:
             )
             st.stop()
 
-        if tipo_arquivo == 'IP':
-            df_prep = preparar_df_ip(df_bruto)
-            with st.spinner('Buscando geolocalização dos IPs...'):
-                df_resultado = buscar_localizacao_ips(df_prep, st.session_state.cache_ips)
-            alertas = detectar_alertas_ip(df_resultado)
-            st.session_state.df_ip_resultado  = df_resultado
-            st.session_state.df_gps_resultado = None
-            st.session_state.alertas_ip       = alertas
-            st.session_state.alertas_gps      = None
-            st.success(f'✅ {len(df_resultado)} registro(s) de IP processado(s).')
-        else:
-            df_prep = preparar_df_gps(df_bruto)
-            with st.spinner('Buscando geocodificação reversa...'):
-                df_resultado = buscar_geocodificacao_reversa(df_prep, st.session_state.cache_geo)
-            alertas = detectar_alertas_gps(df_resultado)
-            st.session_state.df_gps_resultado = df_resultado
-            st.session_state.df_ip_resultado  = None
-            st.session_state.alertas_gps      = alertas
-            st.session_state.alertas_ip       = None
-            st.success(f'✅ {len(df_resultado)} registro(s) de GPS processado(s).')
+        try:
+            if tipo_arquivo == 'IP':
+                df_prep = preparar_df_ip(df_bruto)
+                with st.spinner('Buscando geolocalização dos IPs...'):
+                    df_resultado = buscar_localizacao_ips(df_prep, st.session_state.cache_ips)
+                alertas = detectar_alertas_ip(df_resultado)
+                st.session_state.df_ip_resultado  = df_resultado
+                st.session_state.df_gps_resultado = None
+                st.session_state.alertas_ip       = alertas
+                st.session_state.alertas_gps      = None
+                st.success(f'✅ {len(df_resultado)} registro(s) de IP processado(s).')
+            else:
+                df_prep = preparar_df_gps(df_bruto)
+                with st.spinner('Buscando geocodificação reversa...'):
+                    df_resultado = buscar_geocodificacao_reversa(df_prep, st.session_state.cache_geo)
+                alertas = detectar_alertas_gps(df_resultado)
+                st.session_state.df_gps_resultado = df_resultado
+                st.session_state.df_ip_resultado  = None
+                st.session_state.alertas_gps      = alertas
+                st.session_state.alertas_ip       = None
+                st.success(f'✅ {len(df_resultado)} registro(s) de GPS processado(s).')
 
-        # Novo processamento invalida PDF anterior
-        st.session_state.pdf_bytes = None
-        st.session_state.pdf_nome  = None
+            # Novo processamento invalida PDF anterior
+            st.session_state.pdf_bytes = None
+            st.session_state.pdf_nome  = None
+
+        except ValueError as erro_validacao:
+            st.error(f'❌ {erro_validacao}')
+            st.stop()
 
     # ── Botão PDF — estado-máquina: gerar → rerun → baixar ──────────────
     # Leitura APÓS o bloco de processamento: session_state já atualizado.

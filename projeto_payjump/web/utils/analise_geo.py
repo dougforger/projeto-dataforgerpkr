@@ -9,19 +9,24 @@ consultas de geolocalização por IP e GPS.
 # Funções e variáveis com prefixo '_' são de uso INTERNO deste módulo —
 # elas não devem ser chamadas de outros arquivos. É uma convenção Python
 # para sinalizar "detalhe de implementação, não faz parte da API pública".
+# Exceção: _encontrar_ids_compartilhados é importada por analise_snowflake.py.
 '''
 
 import io
 
 import pandas as pd
-from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import Image as RLImage, Paragraph, Spacer
 
-from .pdf_builder import adicionar_tabela, finalizar_pdf, inicializar_pdf
+from .pdf_builder import (
+    adicionar_tabela,
+    calcular_larguras_proporcional,
+    finalizar_pdf,
+    inicializar_pdf,
+)
 from .pdf_config import (
+    ESTILO_CABECALHO_CELULA,
+    ESTILO_CELULA,
     ESTILO_LEGENDA,
-    FONTE_NEGRITO_ITALICO,
-    FONTE_NORMAL,
     styles,
 )
 
@@ -39,56 +44,19 @@ PALETA_HEX = [
     '#FDBF6F',  # amarelo
 ]
 
-# Mesma paleta em RGBA (mantida para compatibilidade futura)
-PALETA_RGBA = [
-    [227, 26,  28,  200],
-    [51,  160, 44,  200],
-    [31,  120, 180, 200],
-    [255, 127, 0,   200],
-    [106, 61,  154, 200],
-    [177, 89,  40,  200],
-    [166, 206, 227, 200],
-    [178, 223, 138, 200],
-    [251, 154, 153, 200],
-    [253, 191, 111, 200],
-]
-
 # -----------------------------------------------------
-# ESTILOS DE CÉLULA (internos — prefixo '_')
+# ESTILOS DE CÉLULA (aliases dos estilos compartilhados de pdf_config)
 # -----------------------------------------------------
-# Quando uma célula de tabela usa Paragraph, o ReportLab ignora as regras de
-# fonte do ESTILO_TABELA (que só funcionam para strings simples). Por isso,
-# é necessário definir fontName diretamente em cada estilo de Paragraph.
-
-# Estilo para células de DADOS: Calibri Light, tamanho 8, quebra de linha automática.
-_ESTILO_CELULA = ParagraphStyle(
-    'celula_geo',
-    parent=styles['Normal'],
-    fontName=FONTE_NORMAL,
-    wordWrap='LTR',
-    fontSize=8,
-)
-
-# Estilo para células de CABEÇALHO: negrito itálico, igual ao que o ESTILO_TABELA
-# aplicava antes (quando o cabeçalho era uma string simples).
-_ESTILO_CABECALHO = ParagraphStyle(
-    'cabecalho_geo',
-    parent=styles['Normal'],
-    fontName=FONTE_NEGRITO_ITALICO,
-    wordWrap='LTR',
-    fontSize=8,
-)
+# Quando uma célula usa Paragraph, o ReportLab ignora as regras de fonte do
+# ESTILO_TABELA. Os aliases abaixo apontam para os estilos compartilhados
+# de pdf_config, garantindo consistência visual em todos os PDFs.
+_ESTILO_CELULA    = ESTILO_CELULA
+_ESTILO_CABECALHO = ESTILO_CABECALHO_CELULA
 
 
 # -----------------------------------------------------
 # PALETA
 # -----------------------------------------------------
-
-def mapa_cores_por_id(ids: list) -> dict:
-    '''Mapeia IDs ordenados para cores RGBA da paleta.'''
-    ids_ordenados = sorted(set(ids))
-    return {id_: PALETA_RGBA[i % len(PALETA_RGBA)] for i, id_ in enumerate(ids_ordenados)}
-
 
 def mapa_cores_hex_por_id(ids: list) -> dict:
     '''Mapeia IDs ordenados para cores HEX da paleta (uso no staticmap / legenda).'''
@@ -104,10 +72,19 @@ def preparar_df_ip(df_bruto: pd.DataFrame) -> pd.DataFrame:
     '''
     Normaliza colunas do arquivo IP exportado do backend.
 
-    Renomeia colunas para o padrão interno, descarta colunas sem dados úteis
-    (incluindo colunas Unnamed geradas pelo Excel) e retorna DataFrame pronto
-    para geolocalização.
+    Valida que as colunas obrigatórias existam, renomeia para o padrão interno,
+    descarta colunas sem dados úteis e retorna DataFrame pronto para geolocalização.
+
+    Raises:
+        ValueError: Se alguma coluna obrigatória estiver ausente no arquivo.
     '''
+    colunas_obrigatorias = {'Player Name', 'Player ID', 'IP address'}
+    faltando             = colunas_obrigatorias - set(df_bruto.columns)
+    if faltando:
+        raise ValueError(
+            f'Arquivo inválido para tipo IP. Colunas não encontradas: {", ".join(sorted(faltando))}. '
+            f'Verifique se o arquivo exportado é do tipo correto (Relatório de IP).'
+        )
     df = df_bruto.copy()
     df = df.drop(columns=[c for c in df.columns if str(c).startswith('Unnamed')], errors='ignore')
     df = df.rename(columns={
@@ -124,9 +101,19 @@ def preparar_df_gps(df_bruto: pd.DataFrame) -> pd.DataFrame:
     '''
     Normaliza colunas do arquivo GPS exportado do backend.
 
-    Renomeia coordenadas, dados de jogador e dispositivo para o padrão interno.
-    Descarta colunas "undefined" e Unnamed geradas pelo Excel.
+    Valida que as colunas obrigatórias existam, renomeia coordenadas, dados de jogador
+    e dispositivo para o padrão interno. Descarta colunas "undefined" e Unnamed.
+
+    Raises:
+        ValueError: Se alguma coluna obrigatória estiver ausente no arquivo.
     '''
+    colunas_obrigatorias = {'Player Name', 'Player ID', 'Coordinate X', 'GPS coordinate Y'}
+    faltando             = colunas_obrigatorias - set(df_bruto.columns)
+    if faltando:
+        raise ValueError(
+            f'Arquivo inválido para tipo GPS. Colunas não encontradas: {", ".join(sorted(faltando))}. '
+            f'Verifique se o arquivo exportado é do tipo correto (Relatório de GPS).'
+        )
     df = df_bruto.copy()
     df = df.drop(columns=[c for c in df.columns if str(c).startswith('Unnamed')], errors='ignore')
     df = df.rename(columns={
@@ -170,7 +157,24 @@ def resumo_gps(df: pd.DataFrame) -> pd.DataFrame:
 # DETECÇÃO DE ALERTAS
 # -----------------------------------------------------
 
-def detectar_alertas_ip(df: pd.DataFrame) -> dict:
+def _encontrar_ids_compartilhados(
+    df: pd.DataFrame,
+    coluna_grupo: str,
+    coluna_jogador: str,
+) -> list:
+    '''
+    Retorna lista de valores em `coluna_grupo` usados por mais de 1 jogador único.
+
+    Exemplo: `_encontrar_ids_compartilhados(df, 'IP', 'JOGADOR')` retorna os IPs
+    que aparecem para mais de um jogador distinto.
+
+    Prefixo '_': função de uso interno. Exceção: importada por analise_snowflake.py.
+    '''
+    contagem = df.groupby(coluna_grupo)[coluna_jogador].nunique()
+    return contagem[contagem > 1].index.tolist()
+
+
+def detectar_alertas_ip(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     '''
     Detecta situações suspeitas no dataset de IPs.
 
@@ -179,7 +183,7 @@ def detectar_alertas_ip(df: pd.DataFrame) -> dict:
         - 'multiplos_paises': jogadores com mais de 1 país distinto
         - 'ips_compartilhados': IPs usados por mais de 1 jogador
     '''
-    alertas = {}
+    alertas: dict[str, pd.DataFrame] = {}
 
     if 'PAIS' in df.columns and 'JOGADOR' in df.columns:
         paises_por_jogador = (
@@ -195,6 +199,7 @@ def detectar_alertas_ip(df: pd.DataFrame) -> dict:
         alertas['multiplos_paises'] = pd.DataFrame()
 
     if 'IP' in df.columns and 'JOGADOR' in df.columns:
+        ips_partilhados = _encontrar_ids_compartilhados(df, 'IP', 'JOGADOR')
         jogadores_por_ip = (
             df.groupby('IP')['JOGADOR']
             .apply(lambda s: sorted(s.dropna().unique().tolist()))
@@ -202,7 +207,7 @@ def detectar_alertas_ip(df: pd.DataFrame) -> dict:
             .rename(columns={'JOGADOR': 'JOGADORES'})
         )
         alertas['ips_compartilhados'] = jogadores_por_ip[
-            jogadores_por_ip['JOGADORES'].apply(len) > 1
+            jogadores_por_ip['IP'].isin(ips_partilhados)
         ].copy()
     else:
         alertas['ips_compartilhados'] = pd.DataFrame()
@@ -210,7 +215,7 @@ def detectar_alertas_ip(df: pd.DataFrame) -> dict:
     return alertas
 
 
-def detectar_alertas_gps(df: pd.DataFrame) -> dict:
+def detectar_alertas_gps(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     '''
     Detecta situações suspeitas no dataset de GPS.
 
@@ -219,7 +224,7 @@ def detectar_alertas_gps(df: pd.DataFrame) -> dict:
         - 'multiplas_cidades': jogadores com mais de 1 cidade distinta
         - 'dispositivos_compartilhados': Device Codes usados por mais de 1 jogador
     '''
-    alertas = {}
+    alertas: dict[str, pd.DataFrame] = {}
 
     if 'CIDADE' in df.columns and 'JOGADOR' in df.columns:
         cidades_por_jogador = (
@@ -235,6 +240,7 @@ def detectar_alertas_gps(df: pd.DataFrame) -> dict:
         alertas['multiplas_cidades'] = pd.DataFrame()
 
     if 'DISPOSITIVO' in df.columns and 'JOGADOR' in df.columns:
+        dispositivos_partilhados = _encontrar_ids_compartilhados(df, 'DISPOSITIVO', 'JOGADOR')
         jogadores_por_disp = (
             df.groupby('DISPOSITIVO')['JOGADOR']
             .apply(lambda s: sorted(s.dropna().unique().tolist()))
@@ -242,7 +248,7 @@ def detectar_alertas_gps(df: pd.DataFrame) -> dict:
             .rename(columns={'JOGADOR': 'JOGADORES'})
         )
         alertas['dispositivos_compartilhados'] = jogadores_por_disp[
-            jogadores_por_disp['JOGADORES'].apply(len) > 1
+            jogadores_por_disp['DISPOSITIVO'].isin(dispositivos_partilhados)
         ].copy()
     else:
         alertas['dispositivos_compartilhados'] = pd.DataFrame()
@@ -289,7 +295,7 @@ def _gerar_imagem_mapa(
 
 
 # -----------------------------------------------------
-# GERAÇÃO DE PDF — funções auxiliares (internas)
+# GERAÇÃO DE PDF — cabeçalhos de tabela
 # -----------------------------------------------------
 
 _HEADERS_IP = {
@@ -312,35 +318,9 @@ _HEADERS_GPS = {
 }
 
 
-def _calcular_larguras_proporcional(
-    df: pd.DataFrame,
-    colunas: list,
-    cabecalhos: list,
-    largura_total: float,
-    proporcao_minima: float = 0.06,
-) -> list:
-    '''
-    Calcula larguras de coluna proporcionais ao comprimento máximo do conteúdo.
-
-    Para cada coluna, encontra o texto mais longo (entre cabeçalho e dados).
-    A proporção de cada coluna é: comprimento_maximo / total_caracteres.
-    `proporcao_minima` garante que nenhuma coluna fique estreita demais (padrão: 6% da largura total).
-    A soma das larguras retornadas é sempre exatamente `largura_total`.
-
-    Prefixo '_': função de uso interno do módulo.
-    '''
-    comprimentos_maximos = []
-    for coluna, cabecalho in zip(colunas, cabecalhos):
-        valores            = df[coluna].fillna('—').astype(str)
-        comprimento_maximo = max(len(cabecalho), int(valores.str.len().max()))
-        comprimentos_maximos.append(comprimento_maximo)
-
-    total_caracteres  = sum(comprimentos_maximos)
-    proporcoes_brutas = [max(proporcao_minima, comp / total_caracteres)
-                         for comp in comprimentos_maximos]
-    soma_proporcoes   = sum(proporcoes_brutas)
-    return [largura_total * prop / soma_proporcoes for prop in proporcoes_brutas]
-
+# -----------------------------------------------------
+# GERAÇÃO DE PDF — funções auxiliares (internas)
+# -----------------------------------------------------
 
 def _paragrafo_alerta(texto: str) -> Paragraph:
     return Paragraph(f'<font color="red">⚠ {texto}</font>', styles['Normal'])
@@ -425,7 +405,7 @@ def _secao_alertas_ip(story: list, alertas: dict, largura_util: float) -> None:
             for _, row in df_paises.iterrows()
         ]
         df_temp  = pd.DataFrame(dados, columns=['JOGADOR', 'PAISES'])
-        larguras = _calcular_larguras_proporcional(df_temp, ['JOGADOR', 'PAISES'], cabecalhos, largura_util)
+        larguras = calcular_larguras_proporcional(df_temp, ['JOGADOR', 'PAISES'], cabecalhos, largura_util)
         adicionar_tabela(story, _montar_linhas_alerta(cabecalhos, dados), larguras)
     else:
         story.append(_paragrafo_ok('Nenhum jogador com múltiplos países.'))
@@ -443,7 +423,7 @@ def _secao_alertas_ip(story: list, alertas: dict, largura_util: float) -> None:
             for _, row in df_ips.iterrows()
         ]
         df_temp  = pd.DataFrame(dados, columns=['IP', 'JOGADORES'])
-        larguras = _calcular_larguras_proporcional(df_temp, ['IP', 'JOGADORES'], cabecalhos, largura_util)
+        larguras = calcular_larguras_proporcional(df_temp, ['IP', 'JOGADORES'], cabecalhos, largura_util)
         adicionar_tabela(story, _montar_linhas_alerta(cabecalhos, dados), larguras)
     else:
         story.append(_paragrafo_ok('Nenhum IP compartilhado entre jogadores.'))
@@ -464,7 +444,7 @@ def _secao_alertas_gps(story: list, alertas: dict, largura_util: float) -> None:
             for _, row in df_cidades.iterrows()
         ]
         df_temp  = pd.DataFrame(dados, columns=['JOGADOR', 'CIDADES'])
-        larguras = _calcular_larguras_proporcional(df_temp, ['JOGADOR', 'CIDADES'], cabecalhos, largura_util)
+        larguras = calcular_larguras_proporcional(df_temp, ['JOGADOR', 'CIDADES'], cabecalhos, largura_util)
         adicionar_tabela(story, _montar_linhas_alerta(cabecalhos, dados), larguras)
     else:
         story.append(_paragrafo_ok('Nenhum jogador com múltiplas cidades.'))
@@ -482,7 +462,7 @@ def _secao_alertas_gps(story: list, alertas: dict, largura_util: float) -> None:
             for _, row in df_disp.iterrows()
         ]
         df_temp  = pd.DataFrame(dados, columns=['DISPOSITIVO', 'JOGADORES'])
-        larguras = _calcular_larguras_proporcional(df_temp, ['DISPOSITIVO', 'JOGADORES'], cabecalhos, largura_util)
+        larguras = calcular_larguras_proporcional(df_temp, ['DISPOSITIVO', 'JOGADORES'], cabecalhos, largura_util)
         adicionar_tabela(story, _montar_linhas_alerta(cabecalhos, dados), larguras)
     else:
         story.append(_paragrafo_ok('Nenhum dispositivo compartilhado entre jogadores.'))
@@ -494,8 +474,8 @@ def _secao_alertas_gps(story: list, alertas: dict, largura_util: float) -> None:
 
 def gerar_pdf_geo(
     titulo: str,
-    df_ip=None,
-    df_gps=None,
+    df_ip: pd.DataFrame | None = None,
+    df_gps: pd.DataFrame | None = None,
     alertas_ip: dict | None = None,
     alertas_gps: dict | None = None,
 ) -> bytes:
@@ -524,11 +504,10 @@ def gerar_pdf_geo(
     if df_ip is not None and not df_ip.empty:
         story.append(Paragraph('Geolocalização por IP', styles['Heading2']))
 
-        # Tabela resumo com larguras automáticas e word wrap em todas as células
         df_resumo_ip = resumo_ip(df_ip)
         colunas      = [c for c in _HEADERS_IP if c in df_resumo_ip.columns]
         cabecalhos   = [_HEADERS_IP[c] for c in colunas]
-        larguras     = _calcular_larguras_proporcional(df_resumo_ip, colunas, cabecalhos, largura_util)
+        larguras     = calcular_larguras_proporcional(df_resumo_ip, colunas, cabecalhos, largura_util)
         linhas       = _montar_linhas(df_resumo_ip, colunas, cabecalhos)
         story.append(Paragraph(
             'Registros únicos de endereços IP por conta, com localização geográfica estimada. '
@@ -563,16 +542,17 @@ def gerar_pdf_geo(
                 story_mapas.append(Spacer(1, 6))
                 story_mapas.append(_legenda_pdf(df_ip))
                 story_mapas.append(Spacer(1, 16))
+            elif erro:
+                story_mapas.append(Paragraph(f'⚠ Mapa não disponível: {erro}', styles['Normal']))
 
     # ── Seção GPS ─────────────────────────────────────────
     if tem_gps:
         story.append(Paragraph('Geolocalização por GPS', styles['Heading2']))
 
-        # Tabela resumo GPS com larguras automáticas e word wrap em todas as células
         df_resumo_gps = resumo_gps(df_gps)
         colunas       = [c for c in _HEADERS_GPS if c in df_resumo_gps.columns]
         cabecalhos    = [_HEADERS_GPS[c] for c in colunas]
-        larguras      = _calcular_larguras_proporcional(df_resumo_gps, colunas, cabecalhos, largura_util)
+        larguras      = calcular_larguras_proporcional(df_resumo_gps, colunas, cabecalhos, largura_util)
         linhas        = _montar_linhas(df_resumo_gps, colunas, cabecalhos)
         story.append(Paragraph(
             'Registros únicos de localização por coordenadas GPS, deduplificados por jogador, '
@@ -594,6 +574,8 @@ def gerar_pdf_geo(
                 story_mapas.append(RLImage(buffer_mapa, width=largura_util, height=largura_util * 0.43))
                 story_mapas.append(Spacer(1, 6))
                 story_mapas.append(_legenda_pdf(df_gps))
+            elif erro:
+                story_mapas.append(Paragraph(f'⚠ Mapa não disponível: {erro}', styles['Normal']))
 
     # Mapas sempre ao final do documento
     story.extend(story_mapas)

@@ -2,18 +2,16 @@ import pandas as pd
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import Paragraph, Spacer
 
+from .analise_geo import _encontrar_ids_compartilhados
 from .pdf_builder import (
     adicionar_alerta_compartilhamento,
     adicionar_tabela,
+    calcular_larguras_proporcional,
     finalizar_pdf,
     inicializar_pdf,
     montar_tabela_comuns,
 )
 from .pdf_config import (
-    COLS_3,
-    COLS_4,
-    COLS_5,
-    COLS_6,
     ESTILO_LEGENDA,
     LIMITE_MODALIDADE_CASH,
     MULTIPLICADOR_MOEDA,
@@ -96,9 +94,9 @@ def resumo_por_jogador(df: pd.DataFrame) -> pd.DataFrame:
 def detectar_mesas_comuns(df: pd.DataFrame, resumo: pd.DataFrame):
     """Compara todos os pares de jogadores e detecta mesas em comum.
     Retorna (df_pares_com_percentual, conjunto_mesas_comuns)."""
-    mesas_por_jogador = df.groupby('ID_JOGADOR')['ID_MESA'].apply(set)
-    jogadores         = resumo['Jogador ID'].tolist()
-    pares             = []
+    mesas_por_jogador  = df.groupby('ID_JOGADOR')['ID_MESA'].apply(set)
+    jogadores          = resumo['Jogador ID'].tolist()
+    pares              = []
     mesas_comuns_total = set()
 
     for i in range(len(jogadores)):
@@ -121,18 +119,20 @@ def detectar_mesas_comuns(df: pd.DataFrame, resumo: pd.DataFrame):
 
 
 def detectar_dispositivos_compartilhados(df: pd.DataFrame):
-    """Retorna (df_dispositivos_unicos, codigos_compartilhados)."""
+    """Retorna (df_dispositivos_unicos, codigos_compartilhados).
+    Usa _encontrar_ids_compartilhados (importado de analise_geo) para identificar
+    códigos de dispositivo usados por mais de um jogador."""
     df_disp               = df[['NOME_JOGADOR', 'CODIGO_DISPOSITIVO', 'DISPOSITIVO', 'SISTEMA']].drop_duplicates()
-    contagem              = df.groupby('CODIGO_DISPOSITIVO')['ID_JOGADOR'].nunique()
-    codigos_compartilhados = contagem[contagem > 1].index.tolist()
+    codigos_compartilhados = _encontrar_ids_compartilhados(df, 'CODIGO_DISPOSITIVO', 'ID_JOGADOR')
     return df_disp, codigos_compartilhados
 
 
 def detectar_ips_compartilhados(df: pd.DataFrame):
-    """Retorna (df_ips_unicos, ips_compartilhados)."""
+    """Retorna (df_ips_unicos, ips_compartilhados).
+    Usa _encontrar_ids_compartilhados (importado de analise_geo) para identificar
+    IPs usados por mais de um jogador."""
     df_ips             = df[['NOME_JOGADOR', 'IP']].drop_duplicates()
-    contagem           = df.groupby('IP')['ID_JOGADOR'].nunique()
-    ips_compartilhados = contagem[contagem > 1].index.tolist()
+    ips_compartilhados = _encontrar_ids_compartilhados(df, 'IP', 'ID_JOGADOR')
     return df_ips, ips_compartilhados
 
 
@@ -153,13 +153,18 @@ def gerar_pdf_snowflake(
     """Gera o PDF do relatório Snowflake com seções de cash, dispositivos, IPs e geolocalização."""
     buffer, doc, story = inicializar_pdf(protocolo)
 
+    # Largura útil real do documento (descontadas as margens definidas em inicializar_pdf)
+    largura_util = doc.width
+
     # --------------------------------------------------
     # Cruzamento em Cash Games
     # --------------------------------------------------
     story.append(Paragraph('Cruzamento em Cash Games', styles['Heading1']))
 
     if not df_pares.empty:
-        linhas_resumo = [['ID', 'Jogador', 'Clube', 'Total de Mesas', 'Ganhos (R$)', 'Rake (R$)']]
+        # Tabela de resumo por jogador (6 colunas)
+        cabecalhos_resumo = ['ID', 'Jogador', 'Clube', 'Total de Mesas', 'Ganhos (R$)', 'Rake (R$)']
+        linhas_resumo = [cabecalhos_resumo]
         for _, row in resumo_sf.iterrows():
             linhas_resumo.append([
                 row['Player ID'], row['Player Name'], row['Club Name'],
@@ -167,19 +172,34 @@ def gerar_pdf_snowflake(
                 f'R$ {row["Ganhos (R$)"]:.2f}',
                 f'R$ {row["Rake (R$)"]:.2f}',
             ])
+        df_temp_resumo = pd.DataFrame(linhas_resumo[1:], columns=cabecalhos_resumo)
+        larguras_resumo = calcular_larguras_proporcional(
+            df_temp_resumo, cabecalhos_resumo, cabecalhos_resumo, largura_util,
+        )
         story.append(Paragraph('Ganhos líquidos e rake gerado por cada conta nas mesas de cash game identificadas.', ESTILO_LEGENDA))
-        adicionar_tabela(story, linhas_resumo, COLS_6)
+        adicionar_tabela(story, linhas_resumo, larguras_resumo)
 
-        linhas_pares = [['Jogador A', 'Jogador B', 'Mesas em Comum', '% do Jogador A', '% do Jogador B']]
+        # Tabela de pares (5 colunas)
+        cabecalhos_pares = ['Jogador A', 'Jogador B', 'Mesas em Comum', '% do Jogador A', '% do Jogador B']
+        linhas_pares = [cabecalhos_pares]
         for _, row in df_pares.iterrows():
             linhas_pares.append([
                 row['Jogador A'], row['Jogador B'], row['Mesas em Comum'],
                 f'{row["% do Jogador A"]:.2f}%', f'{row["% do Jogador B"]:.2f}%',
             ])
+        df_temp_pares = pd.DataFrame(linhas_pares[1:], columns=cabecalhos_pares)
+        larguras_pares = calcular_larguras_proporcional(
+            df_temp_pares, cabecalhos_pares, cabecalhos_pares, largura_util,
+        )
         story.append(Paragraph('Cruzamento par a par: número de mesas compartilhadas e percentual em relação ao total de cada conta.', ESTILO_LEGENDA))
-        adicionar_tabela(story, linhas_pares, COLS_5)
+        adicionar_tabela(story, linhas_pares, larguras_pares)
+
+        # Tabela de mesas em comum (4 colunas: ID Mesa, Nome da Mesa, Jogadores, Link)
         story.append(Paragraph('Mesas de cash game em comum, com nome da mesa, IDs dos jogadores e link para o histórico de mãos.', ESTILO_LEGENDA))
-        adicionar_tabela(story, montar_tabela_comuns(df_sf_norm, mesas_comuns, coluna_nome='NOME_MESA'), COLS_4)
+        linhas_comuns, larguras_comuns = montar_tabela_comuns(
+            df_sf_norm, mesas_comuns, coluna_nome='NOME_MESA', largura_total=largura_util,
+        )
+        adicionar_tabela(story, linhas_comuns, larguras_comuns)
     else:
         story.append(Paragraph('Sem registro de cash game.', styles['Normal']))
 
@@ -190,17 +210,29 @@ def gerar_pdf_snowflake(
     story.append(Paragraph('Dispositivos', styles['Heading1']))
     story.append(Spacer(1, 6))
 
-    estilo_wrap  = ParagraphStyle('wrap', parent=styles['Normal'], wordWrap='LTR', fontSize=8)
-    linhas_disp  = [['Jogador', 'Cód. Dispositivo', 'Dispositivo', 'Sistema']]
+    # estilo_wrap é necessário aqui porque o código do dispositivo pode ser muito longo
+    # e precisa de quebra de linha automática dentro da célula da tabela
+    estilo_wrap = ParagraphStyle('wrap', parent=styles['Normal'], wordWrap='LTR', fontSize=8)
+
+    cabecalhos_disp = ['Jogador', 'Cód. Dispositivo', 'Dispositivo', 'Sistema']
+    linhas_disp     = [cabecalhos_disp]
+    dados_texto_disp = []   # versão texto usada exclusivamente para calcular larguras proporcionais
     for _, row in df_dispositivos.iterrows():
+        codigo_str = str(row['CODIGO_DISPOSITIVO'])
         linhas_disp.append([
             row['NOME_JOGADOR'],
-            Paragraph(str(row['CODIGO_DISPOSITIVO']), estilo_wrap),
+            Paragraph(codigo_str, estilo_wrap),   # Paragraph para habilitar word wrap
             str(row['DISPOSITIVO']),
             str(row['SISTEMA']),
         ])
+        dados_texto_disp.append([row['NOME_JOGADOR'], codigo_str, str(row['DISPOSITIVO']), str(row['SISTEMA'])])
+
+    df_temp_disp = pd.DataFrame(dados_texto_disp, columns=cabecalhos_disp)
+    larguras_disp = calcular_larguras_proporcional(
+        df_temp_disp, cabecalhos_disp, cabecalhos_disp, largura_util,
+    )
     story.append(Paragraph('Dispositivos únicos registrados por cada conta. Dispositivos compartilhados entre contas distintas são sinalizados abaixo.', ESTILO_LEGENDA))
-    adicionar_tabela(story, linhas_disp, COLS_4, espacamento=8)
+    adicionar_tabela(story, linhas_disp, larguras_disp, espacamento=8)
     adicionar_alerta_compartilhamento(
         story, df_dispositivos,
         coluna_grupo='CODIGO_DISPOSITIVO', coluna_jogador='NOME_JOGADOR',
@@ -215,7 +247,8 @@ def gerar_pdf_snowflake(
     story.append(Paragraph('Endereços IP', styles['Heading1']))
     story.append(Spacer(1, 6))
 
-    linhas_ip = [['Jogador', 'IP', 'Cidade', 'Estado', 'País']]
+    cabecalhos_ip = ['Jogador', 'IP', 'Cidade', 'Estado', 'País']
+    linhas_ip     = [cabecalhos_ip]
     for _, row in df_ips.iterrows():
         linhas_ip.append([
             row['NOME_JOGADOR'], str(row['IP']),
@@ -223,8 +256,12 @@ def gerar_pdf_snowflake(
             str(row.get('ESTADO') or '—'),
             str(row.get('PAIS')   or '—'),
         ])
+    df_temp_ip = pd.DataFrame(linhas_ip[1:], columns=cabecalhos_ip)
+    larguras_ip = calcular_larguras_proporcional(
+        df_temp_ip, cabecalhos_ip, cabecalhos_ip, largura_util,
+    )
     story.append(Paragraph('Endereços IP únicos por conta com localização geográfica estimada. IPs compartilhados entre contas distintas são sinalizados abaixo.', ESTILO_LEGENDA))
-    adicionar_tabela(story, linhas_ip, COLS_5, espacamento=8)
+    adicionar_tabela(story, linhas_ip, larguras_ip, espacamento=8)
     adicionar_alerta_compartilhamento(
         story, df_ips,
         coluna_grupo='IP', coluna_jogador='NOME_JOGADOR',
@@ -246,7 +283,8 @@ def gerar_pdf_snowflake(
     if df_geo_dedup.empty:
         story.append(Paragraph('Sem registros de geolocalização.', styles['Normal']))
     else:
-        linhas_geo = [['Jogador', 'Cidade', 'Estado', 'País']]
+        cabecalhos_geo = ['Jogador', 'Cidade', 'Estado', 'País']
+        linhas_geo     = [cabecalhos_geo]
         for _, row in df_geo_dedup.iterrows():
             linhas_geo.append([
                 row['NOME_JOGADOR'],
@@ -254,8 +292,12 @@ def gerar_pdf_snowflake(
                 str(row.get('ESTADO') or '—'),
                 str(row.get('PAIS')   or '—'),
             ])
+        df_temp_geo = pd.DataFrame(linhas_geo[1:], columns=cabecalhos_geo)
+        larguras_geo = calcular_larguras_proporcional(
+            df_temp_geo, cabecalhos_geo, cabecalhos_geo, largura_util,
+        )
         story.append(Paragraph('Localização geográfica das contas obtida via coordenadas GPS registradas nos dispositivos.', ESTILO_LEGENDA))
-        adicionar_tabela(story, linhas_geo, COLS_4, espacamento=8)
+        adicionar_tabela(story, linhas_geo, larguras_geo, espacamento=8)
 
         cidades_comuns = df_geo_dedup.groupby('CIDADE')['NOME_JOGADOR'].nunique()
         cidades_comuns = cidades_comuns[cidades_comuns > 1].index.tolist()

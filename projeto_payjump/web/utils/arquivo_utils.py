@@ -10,7 +10,7 @@ import zipfile
 import pandas as pd
 
 
-def corrigir_xlsx_memoria(arquivo):
+def corrigir_xlsx_memoria(arquivo) -> io.BytesIO:
     '''
     Corrige arquivos XLSX malformados sem salvar em disco.
 
@@ -43,7 +43,7 @@ def corrigir_xlsx_memoria(arquivo):
     return buffer_corrigido
 
 
-def carregar_xlsx(arquivos):
+def carregar_xlsx(arquivos: list | object) -> pd.DataFrame:
     '''
     Carrega um ou mais arquivos XLSX, corrigindo malformações automaticamente.
 

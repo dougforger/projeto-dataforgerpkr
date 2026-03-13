@@ -3,11 +3,12 @@ from reportlab.platypus import PageBreak, Paragraph, Spacer
 
 from .pdf_builder import (
     adicionar_tabela,
+    calcular_larguras_proporcional,
     finalizar_pdf,
     inicializar_pdf,
     montar_tabela_comuns,
 )
-from .pdf_config import COLS_3, COLS_4, COLS_5, COLS_6, ESTILO_LEGENDA, ESTILO_PARAGRAFO, styles
+from .pdf_config import ESTILO_LEGENDA, ESTILO_PARAGRAFO, styles
 
 
 # -----------------------------------------------------
@@ -136,31 +137,51 @@ def gerar_pdf(
     """Gera o PDF do relatório Backend com seções de Cash Game e Torneios."""
     buffer, doc, story = inicializar_pdf(protocolo)
 
+    # Largura útil real do documento (descontadas as margens definidas em inicializar_pdf)
+    largura_util = doc.width
+
     # --------------------------------------------------
     # Cruzamento em Cash Games
     # --------------------------------------------------
     story.append(Paragraph('Cruzamento em Cash Games', styles['Heading1']))
 
     if not df_pares_cash.empty:
-        linhas_resumo = [['ID', 'Jogador', 'Clube', 'Total de Mesas', 'Ganhos (R$)', 'Rake (R$)']]
+        # Tabela de resumo por jogador (6 colunas)
+        cabecalhos_resumo_cash = ['ID', 'Jogador', 'Clube', 'Total de Mesas', 'Ganhos (R$)', 'Rake (R$)']
+        linhas_resumo_cash = [cabecalhos_resumo_cash]
         for _, row in resumo_cash.iterrows():
-            linhas_resumo.append([
+            linhas_resumo_cash.append([
                 row['Player ID'], row['Player Name'], row['Club Name'], row['Total de Mesas'],
                 f'R$ {row["Ganhos (R$)"]:.2f}', f'R$ {row["Rake (R$)"]:.2f}',
             ])
+        df_temp_resumo_cash = pd.DataFrame(linhas_resumo_cash[1:], columns=cabecalhos_resumo_cash)
+        larguras_resumo_cash = calcular_larguras_proporcional(
+            df_temp_resumo_cash, cabecalhos_resumo_cash, cabecalhos_resumo_cash, largura_util,
+        )
         story.append(Paragraph('Ganhos líquidos e rake gerado por cada conta nas mesas de cash game identificadas.', ESTILO_LEGENDA))
-        adicionar_tabela(story, linhas_resumo, COLS_6)
+        adicionar_tabela(story, linhas_resumo_cash, larguras_resumo_cash)
 
-        linhas_pares = [['Jogador A', 'Jogador B', 'Mesas em Comum', '% do Jogador A', '% do Jogador B']]
+        # Tabela de pares (5 colunas)
+        cabecalhos_pares_cash = ['Jogador A', 'Jogador B', 'Mesas em Comum', '% do Jogador A', '% do Jogador B']
+        linhas_pares_cash = [cabecalhos_pares_cash]
         for _, row in df_pares_cash.iterrows():
-            linhas_pares.append([
+            linhas_pares_cash.append([
                 row['Jogador A'], row['Jogador B'], row['Mesas em Comum'],
                 f'{row["% do Jogador A"]:.2f}%', f'{row["% do Jogador B"]:.2f}%',
             ])
+        df_temp_pares_cash = pd.DataFrame(linhas_pares_cash[1:], columns=cabecalhos_pares_cash)
+        larguras_pares_cash = calcular_larguras_proporcional(
+            df_temp_pares_cash, cabecalhos_pares_cash, cabecalhos_pares_cash, largura_util,
+        )
         story.append(Paragraph('Cruzamento par a par: número de mesas compartilhadas e percentual em relação ao total de cada conta.', ESTILO_LEGENDA))
-        adicionar_tabela(story, linhas_pares, COLS_5)
+        adicionar_tabela(story, linhas_pares_cash, larguras_pares_cash)
+
+        # Tabela de mesas em comum (3 colunas: ID Mesa, Jogadores, Link)
         story.append(Paragraph('Mesas de cash game em comum, com IDs dos jogadores e link para o histórico de mãos.', ESTILO_LEGENDA))
-        adicionar_tabela(story, montar_tabela_comuns(df_cash, mesas_comuns_cash), COLS_3)
+        linhas_comuns_cash, larguras_comuns_cash = montar_tabela_comuns(
+            df_cash, mesas_comuns_cash, largura_total=largura_util,
+        )
+        adicionar_tabela(story, linhas_comuns_cash, larguras_comuns_cash)
     else:
         story.append(Paragraph('Sem registro de cash game', styles['Normal']))
 
@@ -182,22 +203,39 @@ def gerar_pdf(
         ))
         story.append(Spacer(1, 12))
 
-        linhas_resumo_mtt = [['ID', 'Jogador', 'Clube', 'Total de Torneios']]
+        # Tabela de resumo por jogador (4 colunas)
+        cabecalhos_resumo_mtt = ['ID', 'Jogador', 'Clube', 'Total de Torneios']
+        linhas_resumo_mtt = [cabecalhos_resumo_mtt]
         for _, row in resumo_mtt.iterrows():
             linhas_resumo_mtt.append([row['Player ID'], row['Player Name'], row['Club Name'], row['Total de Torneios']])
+        df_temp_resumo_mtt = pd.DataFrame(linhas_resumo_mtt[1:], columns=cabecalhos_resumo_mtt)
+        larguras_resumo_mtt = calcular_larguras_proporcional(
+            df_temp_resumo_mtt, cabecalhos_resumo_mtt, cabecalhos_resumo_mtt, largura_util,
+        )
         story.append(Paragraph('Quantidade de torneios em que cada conta participou no período analisado.', ESTILO_LEGENDA))
-        adicionar_tabela(story, linhas_resumo_mtt, COLS_4)
+        adicionar_tabela(story, linhas_resumo_mtt, larguras_resumo_mtt)
 
-        linhas_pares_mtt = [['Jogador A', 'Jogador B', 'Torneios em Comum', '% do Jogador A', '% do Jogador B']]
+        # Tabela de pares de torneios (5 colunas)
+        cabecalhos_pares_mtt = ['Jogador A', 'Jogador B', 'Torneios em Comum', '% do Jogador A', '% do Jogador B']
+        linhas_pares_mtt = [cabecalhos_pares_mtt]
         for _, row in df_pares_mtt.iterrows():
             linhas_pares_mtt.append([
                 row['Jogador A'], row['Jogador B'], row['Torneios em Comum'],
                 f'{row["% do Jogador A"]:.2f}%', f'{row["% do Jogador B"]:.2f}%',
             ])
+        df_temp_pares_mtt = pd.DataFrame(linhas_pares_mtt[1:], columns=cabecalhos_pares_mtt)
+        larguras_pares_mtt = calcular_larguras_proporcional(
+            df_temp_pares_mtt, cabecalhos_pares_mtt, cabecalhos_pares_mtt, largura_util,
+        )
         story.append(Paragraph('Cruzamento par a par: número de torneios com inscrição simultânea e percentual em relação ao total de cada conta.', ESTILO_LEGENDA))
-        adicionar_tabela(story, linhas_pares_mtt, COLS_5)
+        adicionar_tabela(story, linhas_pares_mtt, larguras_pares_mtt)
+
+        # Tabela de torneios em comum (3 colunas: ID Mesa, Jogadores, Link)
         story.append(Paragraph('Torneios com inscrição simultânea das contas analisadas, com link para verificação no sistema.', ESTILO_LEGENDA))
-        adicionar_tabela(story, montar_tabela_comuns(df_mtt, torneios_comuns), COLS_3)
+        linhas_comuns_mtt, larguras_comuns_mtt = montar_tabela_comuns(
+            df_mtt, torneios_comuns, largura_total=largura_util,
+        )
+        adicionar_tabela(story, linhas_comuns_mtt, larguras_comuns_mtt)
     else:
         story.append(Paragraph('Sem registros de torneios.', styles['Normal']))
 
@@ -209,22 +247,35 @@ def gerar_pdf(
         story.append(Paragraph(f'Detalhamento do Torneio: {torneio_selecionado}', styles['Heading2']))
         story.append(Spacer(1, 6))
 
-        linhas_resumo_torneio = [['Jogador', 'Clube', 'Prize', "KO's", 'Total']]
+        # Tabela de prêmios e KOs (5 colunas)
+        cabecalhos_resumo_torneio = ['Jogador', 'Clube', 'Prize', "KO's", 'Total']
+        linhas_resumo_torneio = [cabecalhos_resumo_torneio]
         for _, row in resumo_torneio.iterrows():
             linhas_resumo_torneio.append([
                 row['Player Name'], row['Club Name'],
                 f'{row["Prize"]:.2f}', f'{row["KO\'s"]:.2f}', f'{row["Total"]:.2f}',
             ])
+        df_temp_resumo_torneio = pd.DataFrame(linhas_resumo_torneio[1:], columns=cabecalhos_resumo_torneio)
+        larguras_resumo_torneio = calcular_larguras_proporcional(
+            df_temp_resumo_torneio, cabecalhos_resumo_torneio, cabecalhos_resumo_torneio, largura_util,
+        )
         story.append(Paragraph('Prêmio, eliminações (KO) e total recebido por cada conta no torneio selecionado.', ESTILO_LEGENDA))
-        adicionar_tabela(story, linhas_resumo_torneio, COLS_5)
+        adicionar_tabela(story, linhas_resumo_torneio, larguras_resumo_torneio)
 
         if df_torneio is not None and not df_torneio.empty:
+            # Colunas variam conforme a presença da coluna de horário no arquivo
             tem_horario = 'Record time' in df_torneio.columns
-            df_detalhe = df_torneio.sort_values('Record time') if tem_horario else df_torneio
-            linhas_detalhe = [['Horário (SP)', 'Jogador', 'Clube', 'Evento', 'Ganhos'] if tem_horario else ['Jogador', 'Clube', 'Evento', 'Ganhos']]
+            df_detalhe  = df_torneio.sort_values('Record time') if tem_horario else df_torneio
+
+            cabecalhos_detalhe = (
+                ['Horário (SP)', 'Jogador', 'Clube', 'Evento', 'Ganhos']
+                if tem_horario
+                else ['Jogador', 'Clube', 'Evento', 'Ganhos']
+            )
+            linhas_detalhe = [cabecalhos_detalhe]
             for _, row in df_detalhe.iterrows():
                 if tem_horario:
-                    horario = pd.to_datetime(row['Record time']) - pd.Timedelta(hours=11)
+                    horario     = pd.to_datetime(row['Record time']) - pd.Timedelta(hours=11)
                     horario_str = horario.strftime('%d/%m/%Y %H:%M')
                     linhas_detalhe.append([
                         horario_str,
@@ -236,8 +287,13 @@ def gerar_pdf(
                         row['Player Name'], row['Club Name'],
                         row['Event'], f'{row["chip change"]:.2f}',
                     ])
+
+            df_temp_detalhe = pd.DataFrame(linhas_detalhe[1:], columns=cabecalhos_detalhe)
+            larguras_detalhe = calcular_larguras_proporcional(
+                df_temp_detalhe, cabecalhos_detalhe, cabecalhos_detalhe, largura_util,
+            )
             story.append(Paragraph('Registro linha a linha dos eventos de premiação no torneio selecionado, ordenados por horário (fuso São Paulo).', ESTILO_LEGENDA))
-            adicionar_tabela(story, linhas_detalhe, COLS_5 if tem_horario else COLS_4)
+            adicionar_tabela(story, linhas_detalhe, larguras_detalhe)
 
     story.append(Spacer(1, 12))
 

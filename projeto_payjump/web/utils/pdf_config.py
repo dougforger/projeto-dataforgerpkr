@@ -1,8 +1,8 @@
 from pathlib import Path
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_JUSTIFY, TA_LEFT
-from reportlab.lib.pagesizes import A4, landscape as _landscape
+from reportlab.lib.enums import TA_LEFT
+from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.lib.utils import ImageReader
@@ -38,54 +38,109 @@ registerFontFamily(
 )
 
 # -----------------------------------------------------
-# ESTILOS
+# PALETA DE CORES INSTITUCIONAL
+# Cor principal: #F0A64D (âmbar Suprema)
+# Contraste texto escuro sobre âmbar: ~6.9:1  (WCAG AA ✓)
+# -----------------------------------------------------
+COR_DESTAQUE        = colors.HexColor('#F0A64D')   # Âmbar institucional — fundo do cabeçalho
+COR_DESTAQUE_ESCURO = colors.HexColor('#C47E20')   # Âmbar escuro — separador sob cabeçalho
+COR_DESTAQUE_CLARO  = colors.HexColor('#FEF6E8')   # Âmbar muito claro — linhas pares (zebra)
+COR_TEXTO           = colors.HexColor('#1C1C1C')   # Quase preto — texto principal
+COR_TEXTO_SUAVE     = colors.HexColor('#555555')   # Cinza médio — legendas e texto secundário
+COR_BORDA           = colors.HexColor('#DDDDDD')   # Cinza claro — borda externa e separadores
+
+# -----------------------------------------------------
+# DIMENSÕES DE PÁGINA
 # -----------------------------------------------------
 styles = getSampleStyleSheet()
 styles['Title'].alignment = TA_LEFT
 
-LARGURA_PAGINA          = A4[0] - 4 * cm
-ALTURA_PAGINA           = A4[1] - 3 * cm
-LARGURA_PAGINA_PAISAGEM = _landscape(A4)[0] - 4 * cm
+LARGURA_PAGINA = A4[0] - 4 * cm
+ALTURA_PAGINA  = A4[1] - 3 * cm
 
-COLS_2 = [LARGURA_PAGINA * 0.50] * 2
-COLS_3 = [LARGURA_PAGINA * 0.30, LARGURA_PAGINA * 0.30, LARGURA_PAGINA * 0.40]
-COLS_4 = [LARGURA_PAGINA * 0.25] * 4
-COLS_5 = [LARGURA_PAGINA * 0.20] * 5
-COLS_6 = [LARGURA_PAGINA * 0.125, LARGURA_PAGINA * 0.125, LARGURA_PAGINA * 0.3,
-          LARGURA_PAGINA * 0.15, LARGURA_PAGINA * 0.15, LARGURA_PAGINA * 0.15] 
-
+# -----------------------------------------------------
+# ESTILOS DE TABELA
+# Design moderno: cabeçalho âmbar, sem grade densa,
+# faixas alternadas (zebra) e mais espaço interno.
+# -----------------------------------------------------
 ESTILO_TABELA = TableStyle([
-    ('FONTNAME',   (0, 0), (-1,  0), FONTE_NEGRITO_ITALICO),
-    ('FONTNAME',   (0, 1), (-1, -1), FONTE_NORMAL),
-    ('BACKGROUND', (0, 0), (-1,  0), colors.grey),
-    ('TEXTCOLOR',  (0, 0), (-1,  0), colors.whitesmoke),
-    ('GRID',       (0, 0), (-1, -1), 0.5, colors.black),
-    ('VALIGN',     (0, 0), (-1, -1), 'TOP'),
+    # ── Cabeçalho ──────────────────────────────────────────────────
+    ('FONTNAME',        (0, 0), (-1,  0), FONTE_NEGRITO),
+    ('FONTSIZE',        (0, 0), (-1,  0), 10),
+    ('BACKGROUND',      (0, 0), (-1,  0), COR_DESTAQUE),
+    ('TEXTCOLOR',       (0, 0), (-1,  0), COR_TEXTO),
+    ('LINEBELOW',       (0, 0), (-1,  0), 1.5, COR_DESTAQUE_ESCURO),
+    # ── Corpo ──────────────────────────────────────────────────────
+    ('FONTNAME',        (0, 1), (-1, -1), FONTE_NORMAL),
+    ('FONTSIZE',        (0, 1), (-1, -1), 9),
+    ('TEXTCOLOR',       (0, 1), (-1, -1), COR_TEXTO),
+    ('ROWBACKGROUNDS',  (0, 1), (-1, -1), [colors.white, COR_DESTAQUE_CLARO]),
+    ('LINEBELOW',       (0, 1), (-1, -2), 0.25, COR_BORDA),
+    # ── Layout ─────────────────────────────────────────────────────
+    ('ALIGN',           (0, 0), (-1, -1), 'LEFT'),
+    ('VALIGN',          (0, 0), (-1, -1), 'MIDDLE'),
+    ('LEFTPADDING',     (0, 0), (-1, -1), 8),
+    ('RIGHTPADDING',    (0, 0), (-1, -1), 8),
+    ('TOPPADDING',      (0, 0), (-1, -1), 6),
+    ('BOTTOMPADDING',   (0, 0), (-1, -1), 6),
+    # ── Borda externa ──────────────────────────────────────────────
+    ('BOX',             (0, 0), (-1, -1), 0.75, COR_BORDA),
 ])
 
+# -----------------------------------------------------
+# ESTILOS DE PARÁGRAFO
+# -----------------------------------------------------
+
+# Parágrafo de corpo — alinhamento à esquerda, espaçamento fluido
 ESTILO_PARAGRAFO = ParagraphStyle(
     'paragrafo_custom',
     parent=styles['Normal'],
-    alignment=TA_JUSTIFY,
+    alignment=TA_LEFT,
+    fontSize=11,
+    leading=15,
     spaceAfter=8,
     spaceBefore=8,
-    firstLineIndent=20,
-    wordWrap='LTR',
     fontName=FONTE_NORMAL,
+    textColor=COR_TEXTO,
 )
 
+# Legenda explicativa — itálico pequeno acima de cada tabela
 ESTILO_LEGENDA = ParagraphStyle(
     'legenda_tabela',
     parent=styles['Normal'],
-    alignment=TA_JUSTIFY,
+    alignment=TA_LEFT,
     fontName=FONTE_ITALICO,
-    fontSize=10,
-    textColor=colors.HexColor('#555555'),
-    spaceBefore=4,
-    spaceAfter=2,
+    fontSize=9,
+    leading=12,
+    textColor=COR_TEXTO_SUAVE,
+    spaceBefore=6,
+    spaceAfter=3,
 )
 
-LOGO = ImageReader(BASE_DIR / 'img' / 'LOGO PRETO.png')
+# Célula de dados — usado em Paragraph() dentro de células de tabela
+# (necessário porque ESTILO_TABELA não aplica fonte a objetos Paragraph)
+ESTILO_CELULA = ParagraphStyle(
+    'celula_tabela',
+    parent=styles['Normal'],
+    fontName=FONTE_NORMAL,
+    fontSize=9,
+    leading=12,
+    textColor=COR_TEXTO,
+    wordWrap='LTR',
+)
+
+# Célula de cabeçalho — usado quando o cabeçalho é montado com Paragraph()
+ESTILO_CABECALHO_CELULA = ParagraphStyle(
+    'cabecalho_celula',
+    parent=styles['Normal'],
+    fontName=FONTE_NEGRITO,
+    fontSize=10,
+    leading=13,
+    textColor=COR_TEXTO,
+    wordWrap='LTR',
+)
+
+LOGO_DEITADO = ImageReader(BASE_DIR / 'img' / 'LOGO PRETO DEITADO.png')
 
 # -----------------------------------------------------
 # APIs EXTERNAS
