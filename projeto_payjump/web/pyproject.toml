@@ -1,0 +1,23 @@
+[project]
+name = "dataforge-pkr"
+version = "0.1.0"
+description = "Sistema de análise de integridade e segurança para a plataforma Suprema Poker"
+requires-python = ">=3.13"
+dependencies = [
+    "streamlit",
+    "pandas",
+    "openpyxl",
+    "pyperclip",
+    "reportlab",
+    "sqlalchemy",
+    "requests",
+    "pydeck",
+    "staticmap",
+    "folium",
+    "streamlit-folium",
+    "dataframe-image",
+    "plotly",
+]
+
+[dependency-groups]
+dev = []

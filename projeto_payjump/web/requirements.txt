@@ -10,3 +10,4 @@ staticmap
 folium
 streamlit-folium
 dataframe-image
+plotly

@@ -7,9 +7,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Interface Web (principal)
 ```bash
 cd projeto_payjump/web
-pip install -r requirements.txt
-streamlit run início.py
+uv sync               # instala dependências e cria/atualiza .venv
+uv run streamlit run início.py
 ```
+
+> **Streamlit Cloud** ainda usa `requirements.txt` (mantido em paralelo).
+> Ao adicionar uma dependência, atualize `pyproject.toml` com `uv add <pacote>`
+> e regenere o requirements.txt: `uv export --no-hashes -o requirements.txt`.
 
 ### Ferramentas CLI
 ```bash
