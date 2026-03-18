@@ -17,6 +17,7 @@ dependencies = [
     "streamlit-folium",
     "dataframe-image",
     "plotly",
+    "matplotlib>=3.10.8",
 ]
 
 [dependency-groups]
