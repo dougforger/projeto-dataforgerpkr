@@ -9,7 +9,8 @@ from .pdf_config import (
     LOGO_DEITADO, styles,
     LARGURA_PAGINA, ALTURA_PAGINA,
     COR_BORDA, COR_DESTAQUE, COR_DESTAQUE_ESCURO, COR_TEXTO_SUAVE,
-    ESTILO_CELULA, ESTILO_TABELA, FONTE_NORMAL,
+    ESTILO_CELULA, ESTILO_CELULA_NOWRAP, ESTILO_TABELA, FONTE_NORMAL,
+    aplicar_fonte_cjk, tem_cjk,
 )
 
 # Margens do documento (consistentes com LARGURA_PAGINA = A4[0] - 4*cm)
@@ -27,7 +28,7 @@ def calcular_larguras_proporcional(
     colunas: list,
     cabecalhos: list,
     largura_total: float,
-    proporcao_minima: float = 0.06,
+    proporcao_minima: float = 0.1,
 ) -> list:
     '''
     Calcula larguras de coluna proporcionais ao comprimento máximo do conteúdo.
@@ -131,9 +132,21 @@ def inicializar_pdf(protocolo: str, paisagem: bool = False, titulo_completo: str
     return buffer, doc, story
 
 
+def _celula_com_fallback_cjk(valor):
+    """Se o valor for uma string com caracteres CJK, converte para Paragraph com fonte CJK."""
+    if isinstance(valor, str) and tem_cjk(valor):
+        return Paragraph(aplicar_fonte_cjk(valor), ESTILO_CELULA)
+    return valor
+
+
 def adicionar_tabela(story: list, linhas: list, larguras_colunas: list, espacamento: int = 12):
-    """Cria Table com estilo padrão e adiciona ao story."""
-    tabela = Table(linhas, colWidths=larguras_colunas)
+    """Cria Table com estilo padrão e adiciona ao story.
+    Aplica automaticamente fonte CJK (STSong-Light) em células com caracteres chineses/japoneses/coreanos."""
+    linhas_processadas = [
+        [_celula_com_fallback_cjk(celula) for celula in linha]
+        for linha in linhas
+    ]
+    tabela = Table(linhas_processadas, colWidths=larguras_colunas)
     tabela.setStyle(ESTILO_TABELA)
     story.append(tabela)
     story.append(Spacer(1, espacamento))
@@ -194,10 +207,16 @@ def montar_tabela_comuns(
             f'?backupOnly=0&dateFilter=16&matchID={id_mesa}'
             f'&page=1&pageSize=100&playerIDs={ids_url}'
         )
-        jogadores_str = ', '.join(str(pid) for pid in ids_jogadores)
+        if 'Player Name' in df.columns:
+            jogadores_info = df_mesa[['Player ID', 'Player Name']].drop_duplicates()
+            jogadores_str  = ', '.join(
+                f'{r["Player Name"]} ({r["Player ID"]})' for _, r in jogadores_info.iterrows()
+            )
+        else:
+            jogadores_str = ', '.join(str(pid) for pid in ids_jogadores)
 
         linha_texto   = [str(id_mesa)]
-        linha_celulas = [Paragraph(str(id_mesa), ESTILO_CELULA)]
+        linha_celulas = [Paragraph(str(id_mesa), ESTILO_CELULA_NOWRAP)]
 
         if coluna_nome:
             nome = df_mesa[coluna_nome].iloc[0] if not df_mesa.empty else '—'

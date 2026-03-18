@@ -44,9 +44,11 @@ def analisar_cash(df: pd.DataFrame):
             total_comuns = len(mesas_comuns)
             total_a = mesas_por_jogador.loc[mesas_por_jogador['Player ID'] == a, 'Total de Mesas'].values[0]
             total_b = mesas_por_jogador.loc[mesas_por_jogador['Player ID'] == b, 'Total de Mesas'].values[0]
+            nome_a = df.loc[df['Player ID'] == a, 'Player Name'].values[0]
+            nome_b = df.loc[df['Player ID'] == b, 'Player Name'].values[0]
             pares.append({
-                'Jogador A':      df.loc[df['Player ID'] == a, 'Player Name'].values[0],
-                'Jogador B':      df.loc[df['Player ID'] == b, 'Player Name'].values[0],
+                'Jogador A':      f'{nome_a} ({a})',
+                'Jogador B':      f'{nome_b} ({b})',
                 'Mesas em Comum': total_comuns,
                 '% do Jogador A': round(total_comuns / total_a * 100, 1),
                 '% do Jogador B': round(total_comuns / total_b * 100, 1),
@@ -62,8 +64,12 @@ def analisar_cash(df: pd.DataFrame):
 def analisar_torneios(df: pd.DataFrame):
     """Calcula resumo por jogador, pares e torneios em comum.
     Retorna (resumo_mtt, df_pares_mtt, torneios_comuns)."""
-    resumo_mtt = df.groupby(['Player ID', 'Player Name', 'Club Name'])['Game ID'].nunique().reset_index()
-    resumo_mtt.columns = ['Player ID', 'Player Name', 'Club Name', 'Total de Torneios']
+    resumo_mtt = df.groupby(['Player ID', 'Player Name', 'Club Name']).agg(
+        Total_Torneios =('Game ID',        'nunique'),
+        Ganhos_Liquido =('chip change',    'sum'),
+        Rake           =('Game Fee change','sum'),
+    ).reset_index()
+    resumo_mtt.columns = ['Player ID', 'Player Name', 'Club Name', 'Total de Torneios', 'Ganhos (R$)', 'Rake (R$)']
 
     mesas_por_jogador = df.groupby('Player Name')['Game ID'].apply(set)
     jogadores         = resumo_mtt['Player Name'].unique().tolist()
@@ -79,9 +85,11 @@ def analisar_torneios(df: pd.DataFrame):
                 total_comuns = len(comuns)
                 total_a = resumo_mtt.loc[resumo_mtt['Player Name'] == a, 'Total de Torneios'].values[0]
                 total_b = resumo_mtt.loc[resumo_mtt['Player Name'] == b, 'Total de Torneios'].values[0]
+                id_a = df.loc[df['Player Name'] == a, 'Player ID'].values[0]
+                id_b = df.loc[df['Player Name'] == b, 'Player ID'].values[0]
                 pares.append({
-                    'Jogador A':         df.loc[df['Player Name'] == a, 'Player Name'].values[0],
-                    'Jogador B':         df.loc[df['Player Name'] == b, 'Player Name'].values[0],
+                    'Jogador A':         f'{a} ({id_a})',
+                    'Jogador B':         f'{b} ({id_b})',
                     'Torneios em Comum': total_comuns,
                     '% do Jogador A':    round(total_comuns / total_a * 100, 1),
                     '% do Jogador B':    round(total_comuns / total_b * 100, 1),
@@ -203,11 +211,14 @@ def gerar_pdf(
         ))
         story.append(Spacer(1, 12))
 
-        # Tabela de resumo por jogador (4 colunas)
-        cabecalhos_resumo_mtt = ['ID', 'Jogador', 'Clube', 'Total de Torneios']
+        # Tabela de resumo por jogador (6 colunas)
+        cabecalhos_resumo_mtt = ['ID', 'Jogador', 'Clube', 'Total de Torneios', 'Ganhos (R$)', 'Rake (R$)']
         linhas_resumo_mtt = [cabecalhos_resumo_mtt]
         for _, row in resumo_mtt.iterrows():
-            linhas_resumo_mtt.append([row['Player ID'], row['Player Name'], row['Club Name'], row['Total de Torneios']])
+            linhas_resumo_mtt.append([
+                row['Player ID'], row['Player Name'], row['Club Name'], row['Total de Torneios'],
+                f'R$ {row["Ganhos (R$)"]:.2f}', f'R$ {row["Rake (R$)"]:.2f}',
+            ])
         df_temp_resumo_mtt = pd.DataFrame(linhas_resumo_mtt[1:], columns=cabecalhos_resumo_mtt)
         larguras_resumo_mtt = calcular_larguras_proporcional(
             df_temp_resumo_mtt, cabecalhos_resumo_mtt, cabecalhos_resumo_mtt, largura_util,
@@ -247,14 +258,20 @@ def gerar_pdf(
         story.append(Paragraph(f'Detalhamento do Torneio: {torneio_selecionado}', styles['Heading2']))
         story.append(Spacer(1, 6))
 
-        # Tabela de prêmios e KOs (5 colunas)
+        # Tabela de prêmios e KOs (5 colunas) + linha de total
         cabecalhos_resumo_torneio = ['Jogador', 'Clube', 'Prize', "KO's", 'Total']
         linhas_resumo_torneio = [cabecalhos_resumo_torneio]
         for _, row in resumo_torneio.iterrows():
             linhas_resumo_torneio.append([
-                row['Player Name'], row['Club Name'],
+                f'{row["Player Name"]} ({row["Player ID"]})', row['Club Name'],
                 f'{row["Prize"]:.2f}', f'{row["KO\'s"]:.2f}', f'{row["Total"]:.2f}',
             ])
+        linhas_resumo_torneio.append([
+            'TOTAL', '',
+            f'{resumo_torneio["Prize"].sum():.2f}',
+            f'{resumo_torneio["KO\'s"].sum():.2f}',
+            f'{resumo_torneio["Total"].sum():.2f}',
+        ])
         df_temp_resumo_torneio = pd.DataFrame(linhas_resumo_torneio[1:], columns=cabecalhos_resumo_torneio)
         larguras_resumo_torneio = calcular_larguras_proporcional(
             df_temp_resumo_torneio, cabecalhos_resumo_torneio, cabecalhos_resumo_torneio, largura_util,
@@ -274,17 +291,18 @@ def gerar_pdf(
             )
             linhas_detalhe = [cabecalhos_detalhe]
             for _, row in df_detalhe.iterrows():
+                conta = f'{row["Player Name"]} ({row["Player ID"]})'
                 if tem_horario:
                     horario     = pd.to_datetime(row['Record time']) - pd.Timedelta(hours=11)
                     horario_str = horario.strftime('%d/%m/%Y %H:%M')
                     linhas_detalhe.append([
                         horario_str,
-                        row['Player Name'], row['Club Name'],
+                        conta, row['Club Name'],
                         row['Event'], f'{row["chip change"]:.2f}',
                     ])
                 else:
                     linhas_detalhe.append([
-                        row['Player Name'], row['Club Name'],
+                        conta, row['Club Name'],
                         row['Event'], f'{row["chip change"]:.2f}',
                     ])
 

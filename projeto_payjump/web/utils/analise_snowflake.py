@@ -93,8 +93,9 @@ def resumo_por_jogador(df: pd.DataFrame) -> pd.DataFrame:
 
 def detectar_mesas_comuns(df: pd.DataFrame, resumo: pd.DataFrame):
     """Compara todos os pares de jogadores e detecta mesas em comum.
+    Só contabiliza uma mesa se os jogadores jogaram a mesma mão (ID_MAO).
     Retorna (df_pares_com_percentual, conjunto_mesas_comuns)."""
-    mesas_por_jogador  = df.groupby('ID_JOGADOR')['ID_MESA'].apply(set)
+    maos_por_jogador   = df.groupby('ID_JOGADOR')['ID_MAO'].apply(set)
     jogadores          = resumo['Jogador ID'].tolist()
     pares              = []
     mesas_comuns_total = set()
@@ -102,14 +103,15 @@ def detectar_mesas_comuns(df: pd.DataFrame, resumo: pd.DataFrame):
     for i in range(len(jogadores)):
         for j in range(i + 1, len(jogadores)):
             a, b         = jogadores[i], jogadores[j]
-            mesas_comuns = mesas_por_jogador[a] & mesas_por_jogador[b]
+            maos_comuns  = maos_por_jogador[a] & maos_por_jogador[b]
+            mesas_comuns = set(df[df['ID_MAO'].isin(maos_comuns)]['ID_MESA'].unique())
             mesas_comuns_total |= mesas_comuns
             total_comuns = len(mesas_comuns)
             total_a = resumo.loc[resumo['Jogador ID'] == a, 'Total de Mesas'].values[0]
             total_b = resumo.loc[resumo['Jogador ID'] == b, 'Total de Mesas'].values[0]
             pares.append({
-                'Jogador A':      df.loc[df['ID_JOGADOR'] == a, 'NOME_JOGADOR'].values[0],
-                'Jogador B':      df.loc[df['ID_JOGADOR'] == b, 'NOME_JOGADOR'].values[0],
+                'Jogador A':      f'{df.loc[df["ID_JOGADOR"] == a, "NOME_JOGADOR"].values[0]} ({a})',
+                'Jogador B':      f'{df.loc[df["ID_JOGADOR"] == b, "NOME_JOGADOR"].values[0]} ({b})',
                 'Mesas em Comum': total_comuns,
                 '% do Jogador A': round(total_comuns / total_a * 100, 1) if total_a else 0,
                 '% do Jogador B': round(total_comuns / total_b * 100, 1) if total_b else 0,
@@ -122,7 +124,7 @@ def detectar_dispositivos_compartilhados(df: pd.DataFrame):
     """Retorna (df_dispositivos_unicos, codigos_compartilhados).
     Usa _encontrar_ids_compartilhados (importado de analise_geo) para identificar
     códigos de dispositivo usados por mais de um jogador."""
-    df_disp               = df[['NOME_JOGADOR', 'CODIGO_DISPOSITIVO', 'DISPOSITIVO', 'SISTEMA']].drop_duplicates()
+    df_disp               = df[['ID_JOGADOR', 'NOME_JOGADOR', 'CODIGO_DISPOSITIVO', 'DISPOSITIVO', 'SISTEMA']].drop_duplicates()
     codigos_compartilhados = _encontrar_ids_compartilhados(df, 'CODIGO_DISPOSITIVO', 'ID_JOGADOR')
     return df_disp, codigos_compartilhados
 
@@ -131,7 +133,7 @@ def detectar_ips_compartilhados(df: pd.DataFrame):
     """Retorna (df_ips_unicos, ips_compartilhados).
     Usa _encontrar_ids_compartilhados (importado de analise_geo) para identificar
     IPs usados por mais de um jogador."""
-    df_ips             = df[['NOME_JOGADOR', 'IP']].drop_duplicates()
+    df_ips             = df[['ID_JOGADOR', 'NOME_JOGADOR', 'IP']].drop_duplicates()
     ips_compartilhados = _encontrar_ids_compartilhados(df, 'IP', 'ID_JOGADOR')
     return df_ips, ips_compartilhados
 
@@ -162,12 +164,12 @@ def gerar_pdf_snowflake(
     story.append(Paragraph('Cruzamento em Cash Games', styles['Heading1']))
 
     if not df_pares.empty:
-        # Tabela de resumo por jogador (6 colunas)
-        cabecalhos_resumo = ['ID', 'Jogador', 'Clube', 'Total de Mesas', 'Ganhos (R$)', 'Rake (R$)']
+        # Tabela de resumo por jogador (5 colunas)
+        cabecalhos_resumo = ['Conta', 'Clube', 'Total de Mesas', 'Ganhos (R$)', 'Rake (R$)']
         linhas_resumo = [cabecalhos_resumo]
         for _, row in resumo_sf.iterrows():
             linhas_resumo.append([
-                row['Player ID'], row['Player Name'], row['Club Name'],
+                f'{row["Player Name"]} ({row["Player ID"]})', row['Club Name'],
                 row['Total de Mesas'],
                 f'R$ {row["Ganhos (R$)"]:.2f}',
                 f'R$ {row["Rake (R$)"]:.2f}',
@@ -218,14 +220,15 @@ def gerar_pdf_snowflake(
     linhas_disp     = [cabecalhos_disp]
     dados_texto_disp = []   # versão texto usada exclusivamente para calcular larguras proporcionais
     for _, row in df_dispositivos.iterrows():
+        conta     = f'{row["NOME_JOGADOR"]} ({row["ID_JOGADOR"]})'
         codigo_str = str(row['CODIGO_DISPOSITIVO'])
         linhas_disp.append([
-            row['NOME_JOGADOR'],
+            conta,
             Paragraph(codigo_str, estilo_wrap),   # Paragraph para habilitar word wrap
             str(row['DISPOSITIVO']),
             str(row['SISTEMA']),
         ])
-        dados_texto_disp.append([row['NOME_JOGADOR'], codigo_str, str(row['DISPOSITIVO']), str(row['SISTEMA'])])
+        dados_texto_disp.append([conta, codigo_str, str(row['DISPOSITIVO']), str(row['SISTEMA'])])
 
     df_temp_disp = pd.DataFrame(dados_texto_disp, columns=cabecalhos_disp)
     larguras_disp = calcular_larguras_proporcional(
@@ -251,7 +254,7 @@ def gerar_pdf_snowflake(
     linhas_ip     = [cabecalhos_ip]
     for _, row in df_ips.iterrows():
         linhas_ip.append([
-            row['NOME_JOGADOR'], str(row['IP']),
+            f'{row["NOME_JOGADOR"]} ({row["ID_JOGADOR"]})', str(row['IP']),
             str(row.get('CIDADE') or '—'),
             str(row.get('ESTADO') or '—'),
             str(row.get('PAIS')   or '—'),
@@ -277,7 +280,7 @@ def gerar_pdf_snowflake(
     story.append(Spacer(1, 6))
 
     df_geo_dedup = (
-        df_geo[['NOME_JOGADOR', 'CIDADE', 'ESTADO', 'PAIS']].drop_duplicates()
+        df_geo[['ID_JOGADOR', 'NOME_JOGADOR', 'CIDADE', 'ESTADO', 'PAIS']].drop_duplicates()
         if not df_geo.empty else pd.DataFrame()
     )
     if df_geo_dedup.empty:
@@ -287,7 +290,7 @@ def gerar_pdf_snowflake(
         linhas_geo     = [cabecalhos_geo]
         for _, row in df_geo_dedup.iterrows():
             linhas_geo.append([
-                row['NOME_JOGADOR'],
+                f'{row["NOME_JOGADOR"]} ({row["ID_JOGADOR"]})',
                 str(row.get('CIDADE') or '—'),
                 str(row.get('ESTADO') or '—'),
                 str(row.get('PAIS')   or '—'),

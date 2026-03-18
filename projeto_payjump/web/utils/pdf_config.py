@@ -1,3 +1,5 @@
+import html
+import re
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -7,6 +9,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.pdfmetrics import registerFontFamily
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import TableStyle
@@ -36,6 +39,39 @@ registerFontFamily(
     italic=FONTE_ITALICO,
     boldItalic=FONTE_NEGRITO_ITALICO,
 )
+
+# Fonte CJK (chinês, japonês, coreano) — built-in do ReportLab, sem arquivo externo
+FONTE_CJK = 'STSong-Light'
+pdfmetrics.registerFont(UnicodeCIDFont(FONTE_CJK))
+
+# Padrão Unicode para blocos CJK mais comuns
+_RE_CJK = re.compile(
+    r'[\u4e00-\u9fff'    # CJK Unified Ideographs (chinês/japonês/coreano)
+    r'\u3400-\u4dbf'     # CJK Extension A
+    r'\uac00-\ud7af'     # Hangul (coreano)
+    r'\u3040-\u309f'     # Hiragana
+    r'\u30a0-\u30ff'     # Katakana
+    r'\uff00-\uffef]+'   # Halfwidth/Fullwidth Forms
+)
+
+
+def aplicar_fonte_cjk(texto: str) -> str:
+    """Envolve trechos CJK em tags <font> para STSong-Light; escapa o restante para XML."""
+    partes = []
+    ultimo = 0
+    for m in _RE_CJK.finditer(texto):
+        if m.start() > ultimo:
+            partes.append(html.escape(texto[ultimo:m.start()]))
+        partes.append(f'<font name="{FONTE_CJK}">{m.group()}</font>')
+        ultimo = m.end()
+    if ultimo < len(texto):
+        partes.append(html.escape(texto[ultimo:]))
+    return ''.join(partes)
+
+
+def tem_cjk(texto: str) -> bool:
+    """Retorna True se o texto contiver algum caractere CJK."""
+    return bool(_RE_CJK.search(texto))
 
 # -----------------------------------------------------
 # PALETA DE CORES INSTITUCIONAL
@@ -127,6 +163,14 @@ ESTILO_CELULA = ParagraphStyle(
     leading=12,
     textColor=COR_TEXTO,
     wordWrap='LTR',
+)
+
+# Variante sem quebra de linha — para colunas de ID numérico, datas, etc.
+ESTILO_CELULA_NOWRAP = ParagraphStyle(
+    'celula_tabela_nowrap',
+    parent=ESTILO_CELULA,
+    wordWrap=None,
+    splitLongWords=0,
 )
 
 # Célula de cabeçalho — usado quando o cabeçalho é montado com Paragraph()

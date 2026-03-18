@@ -4,6 +4,7 @@ from pathlib import Path
 
 from utils.arquivo_utils import carregar_xlsx
 from utils.analise_backend import analisar_cash, analisar_torneios, detalhar_torneio, gerar_pdf
+from utils.imagem_utils import gerar_imagem_df
 from utils.analise_snowflake import (
     preprocessar_dados,
     resumo_por_jogador,
@@ -13,6 +14,7 @@ from utils.analise_snowflake import (
     gerar_pdf_snowflake,
 )
 from utils.geolocation import buscar_localizacao_ips, buscar_geocodificacao_reversa
+from utils.pdf_config import MULTIPLICADOR_MOEDA
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -106,8 +108,20 @@ with aba_backend:
             'Event', 'Association', 'Game ID', 'Hand ID', 'chip change', 'Game Fee change',
             'Record time',
         ]
-        st.session_state.df_backend = df_backend[colunas_uteis]
-        st.success(f'✅ {len(upload_files)} arquivo(s) carregado(s)! {len(st.session_state.df_backend)} linhas encontradas')
+        df_backend = df_backend[colunas_uteis].copy()
+
+        # Conversão para R$: (moeda local / handicap) * 5
+        df_ligas_map = pd.read_csv(BASE_DIR / 'data' / 'ligas.csv')[['liga_id', 'handicap']]
+        df_ligas_map['liga_id'] = df_ligas_map['liga_id'].astype(int)
+        df_ligas_map['handicap'] = df_ligas_map['handicap'].astype(float)
+        df_backend['Union ID']  = df_backend['Union ID'].astype(int)
+        handicap_map = df_ligas_map.set_index('liga_id')['handicap'].to_dict()
+        handicap_series = df_backend['Union ID'].map(handicap_map).fillna(1)
+        df_backend['chip change']     = (df_backend['chip change']     / handicap_series) * MULTIPLICADOR_MOEDA
+        df_backend['Game Fee change'] = (df_backend['Game Fee change'] / handicap_series) * MULTIPLICADOR_MOEDA
+
+        st.session_state.df_backend = df_backend
+        st.success(f'✅ {len(upload_files)} arquivo(s) carregado(s)! {len(st.session_state.df_backend)} linhas encontradas. Valores convertidos para R$.')
 
     if st.session_state.df_backend is not None:
         with st.expander('👀 Visualizar arquivo carregado'):
@@ -168,7 +182,16 @@ with aba_backend:
                     st.markdown('---')
                     st.subheader('Detalhamento por mesa')
                     mesa_selecionada_cash = st.selectbox('Selecione uma mesa', sorted(mesas_comuns_cash, reverse=True))
-                    df_mesa_cash = df_cash[df_cash['Game ID'] == mesa_selecionada_cash].copy().sort_values(['Hand ID', 'Player ID'])
+                    _df_mesa_cash_all = df_cash[df_cash['Game ID'] == mesa_selecionada_cash]
+                    _maos_compartilhadas_cash = (
+                        _df_mesa_cash_all.groupby('Hand ID')['Player ID']
+                        .nunique()
+                        .pipe(lambda s: s[s > 1].index)
+                    )
+                    df_mesa_cash = (
+                        _df_mesa_cash_all[_df_mesa_cash_all['Hand ID'].isin(_maos_compartilhadas_cash)]
+                        .copy().sort_values(['Hand ID', 'Player ID'])
+                    )
                     df_mesa_cash_resumo = df_mesa_cash.groupby(['Player ID', 'Player Name', 'Club Name']).agg(
                         Ganhos   =('chip change',    'sum'),
                         Rake     =('Game Fee change', 'sum'),
@@ -193,7 +216,11 @@ with aba_backend:
 
             if not df_mtt.empty:
                 resumo_mtt, df_pares_mtt, torneios_comuns = analisar_torneios(df_mtt)
-                st.dataframe(resumo_mtt, hide_index=True, width='stretch')
+                st.dataframe(resumo_mtt, hide_index=True, width='stretch',
+                             column_config={
+                                 'Ganhos (R$)': st.column_config.NumberColumn(format='localized'),
+                                 'Rake (R$)':   st.column_config.NumberColumn(format='localized'),
+                             })
 
                 if not df_pares_mtt.empty:
                     st.dataframe(df_pares_mtt, hide_index=True, width='stretch')
@@ -204,13 +231,51 @@ with aba_backend:
                         mesas_selecionada_mtt = st.selectbox('Selecione um Torneio', sorted(torneios_comuns, reverse=True))
                         df_mesa_mtt_resumo, df_mesa_mtt = detalhar_torneio(st.session_state.df_backend, mesas_selecionada_mtt)
 
-                        st.dataframe(df_mesa_mtt_resumo, hide_index=True, width='stretch',
-                                     column_config={
-                                         'Prize': st.column_config.NumberColumn(format='localized'),
-                                         "KO's":  st.column_config.NumberColumn(format='localized'),
-                                         'Total': st.column_config.NumberColumn(format='localized'),
-                                     })
-                        st.dataframe(df_mesa_mtt, hide_index=True, width='stretch')
+                        total_row = pd.DataFrame([{
+                            'Player ID':   'TOTAL',
+                            'Player Name': '',
+                            'Club Name':   '',
+                            'Prize':       df_mesa_mtt_resumo['Prize'].sum(),
+                            "KO's":        df_mesa_mtt_resumo["KO's"].sum(),
+                            'Total':       df_mesa_mtt_resumo['Total'].sum(),
+                        }])
+                        df_mesa_mtt_resumo_display = pd.concat([df_mesa_mtt_resumo, total_row], ignore_index=True)
+                        df_mesa_mtt_resumo_display['Jogador'] = df_mesa_mtt_resumo_display.apply(
+                            lambda r: f'{r["Player Name"]} ({r["Player ID"]})' if str(r['Player ID']) != 'TOTAL' else 'TOTAL',
+                            axis=1,
+                        )
+
+                        df_torneio_display = (
+                            df_mesa_mtt_resumo_display[['Jogador', 'Club Name', 'Prize', "KO's", 'Total']]
+                            .rename(columns={'Club Name': 'Clube', 'Prize': 'Prêmio', "KO's": 'KO'})
+                        )
+                        st.dataframe(
+                            df_torneio_display,
+                            hide_index=True, width='stretch',
+                            column_config={
+                                'Prêmio': st.column_config.NumberColumn(format='localized'),
+                                'KO':     st.column_config.NumberColumn(format='localized'),
+                                'Total':  st.column_config.NumberColumn(format='localized'),
+                            })
+                        st.download_button(
+                            label='📷 Exportar tabela como imagem',
+                            data=gerar_imagem_df(
+                                df_torneio_display,
+                                formatar_colunas=['Prêmio', 'KO', 'Total'],
+                            ),
+                            file_name=f'PREMIO-{mesas_selecionada_mtt}.png',
+                            mime='image/png',
+                        )
+
+                        df_mesa_mtt_display = df_mesa_mtt.copy()
+                        df_mesa_mtt_display.insert(
+                            0, 'Conta',
+                            df_mesa_mtt_display['Player Name'] + ' (' + df_mesa_mtt_display['Player ID'].astype(str) + ')',
+                        )
+                        st.dataframe(
+                            df_mesa_mtt_display.drop(columns=['Player ID', 'Player Name']),
+                            hide_index=True, width='stretch',
+                        )
                 else:
                     st.info(f'Somente a conta {resumo_mtt["Player Name"].iloc[0]} possui registro em torneios.')
 
@@ -295,11 +360,18 @@ with aba_snowflake:
         with col1:
             st.subheader('Resumo dos jogadores')
             resumo_jogadores = resumo_por_jogador(df_sf)
-            st.dataframe(resumo_jogadores, hide_index=True, width='stretch',
-                         column_config={
-                             'Ganhos (R$)': st.column_config.NumberColumn(format='localized'),
-                             'Rake (R$)':   st.column_config.NumberColumn(format='localized'),
-                         })
+            resumo_jogadores_display = resumo_jogadores.copy()
+            resumo_jogadores_display.insert(
+                0, 'Conta',
+                resumo_jogadores_display['Jogador Nome'] + ' (' + resumo_jogadores_display['Jogador ID'].astype(str) + ')',
+            )
+            st.dataframe(
+                resumo_jogadores_display[['Conta', 'Clube Nome', 'Total de Mesas', 'Ganhos (R$)', 'Rake (R$)']],
+                hide_index=True, width='stretch',
+                column_config={
+                    'Ganhos (R$)': st.column_config.NumberColumn(format='localized'),
+                    'Rake (R$)':   st.column_config.NumberColumn(format='localized'),
+                })
 
             st.subheader('Mesas em comum')
             df_pares_sf, mesas_comuns_sf = detectar_mesas_comuns(df_sf, resumo_jogadores)
@@ -308,9 +380,10 @@ with aba_snowflake:
         with col2:
             st.subheader('Dispositivos')
             df_dispositivos, codigos_compartilhados = detectar_dispositivos_compartilhados(df_sf)
+            df_disp_display = df_dispositivos.copy()
+            df_disp_display['Jogador'] = df_disp_display['NOME_JOGADOR'] + ' (' + df_disp_display['ID_JOGADOR'].astype(str) + ')'
             st.dataframe(
-                df_dispositivos.rename(columns={
-                    'NOME_JOGADOR':      'Jogador',
+                df_disp_display[['Jogador', 'CODIGO_DISPOSITIVO', 'DISPOSITIVO', 'SISTEMA']].rename(columns={
                     'CODIGO_DISPOSITIVO':'Cód. Dispositivo',
                     'DISPOSITIVO':       'Dispositivo',
                     'SISTEMA':           'Sistema',
@@ -327,12 +400,13 @@ with aba_snowflake:
             if 'ip_cache' not in st.session_state:
                 st.session_state.ip_cache = {}
             df_ips_com_localizacao = buscar_localizacao_ips(df_ips_bruto, st.session_state.ip_cache)
+            df_ips_display = df_ips_com_localizacao.copy()
+            df_ips_display['Jogador'] = df_ips_display['NOME_JOGADOR'] + ' (' + df_ips_display['ID_JOGADOR'].astype(str) + ')'
             st.dataframe(
-                df_ips_com_localizacao.rename(columns={
-                    'NOME_JOGADOR': 'Jogador',
-                    'CIDADE':       'Cidade',
-                    'ESTADO':       'Estado',
-                    'PAIS':         'País',
+                df_ips_display[['Jogador', 'IP', 'CIDADE', 'ESTADO', 'PAIS']].rename(columns={
+                    'CIDADE': 'Cidade',
+                    'ESTADO': 'Estado',
+                    'PAIS':   'País',
                 }),
                 hide_index=True, width='stretch',
             )
@@ -365,13 +439,13 @@ with aba_snowflake:
             if df_geo.empty:
                 st.info('Jogadores sem registro de localização por GPS.')
             else:
+                df_geo_display = df_geo[['ID_JOGADOR', 'NOME_JOGADOR', 'CIDADE', 'ESTADO', 'PAIS']].drop_duplicates().copy()
+                df_geo_display['Jogador'] = df_geo_display['NOME_JOGADOR'] + ' (' + df_geo_display['ID_JOGADOR'].astype(str) + ')'
                 st.dataframe(
-                    df_geo[['NOME_JOGADOR', 'CIDADE', 'ESTADO', 'PAIS']].drop_duplicates()
-                    .rename(columns={
-                        'NOME_JOGADOR': 'Jogador',
-                        'CIDADE':       'Cidade',
-                        'ESTADO':       'Estado',
-                        'PAIS':         'País',
+                    df_geo_display[['Jogador', 'CIDADE', 'ESTADO', 'PAIS']].rename(columns={
+                        'CIDADE': 'Cidade',
+                        'ESTADO': 'Estado',
+                        'PAIS':   'País',
                     }),
                     hide_index=True, width='stretch',
                 )
@@ -391,8 +465,17 @@ with aba_snowflake:
         mesas_ordenadas  = sorted(mesas_comuns_sf, reverse=True)
         mesa_selecionada = st.selectbox('Selecione uma mesa para mais detalhes.', mesas_ordenadas)
 
+        # Apenas mãos onde mais de um jogador do dataset participou
+        _df_mesa_all = df_sf[df_sf['ID_MESA'] == mesa_selecionada]
+        maos_compartilhadas = (
+            _df_mesa_all.groupby('ID_MAO')['ID_JOGADOR']
+            .nunique()
+            .pipe(lambda s: s[s > 1].index)
+        )
+        df_mesa_base = _df_mesa_all[_df_mesa_all['ID_MAO'].isin(maos_compartilhadas)]
+
         df_mesa_resumo = (
-            df_sf[df_sf['ID_MESA'] == mesa_selecionada]
+            df_mesa_base
             .groupby(['ID_JOGADOR','NOME_JOGADOR', 'NOME_CLUBE', 'ID_MESA'])
             .agg(
                 TOTAL_GANHOS=('GANHOS', 'sum'),
@@ -400,33 +483,49 @@ with aba_snowflake:
                 QNT_MAOS    =('ID_MAO', 'count'),
             ).reset_index()
         )
-        st.dataframe(
-            df_mesa_resumo[['ID_JOGADOR','NOME_JOGADOR', 'NOME_CLUBE', 'TOTAL_GANHOS', 'TOTAL_RAKE', 'QNT_MAOS']]
+        df_mesa_resumo_display = df_mesa_resumo.copy()
+        df_mesa_resumo_display.insert(
+            0, 'Conta',
+            df_mesa_resumo_display['NOME_JOGADOR'] + ' (' + df_mesa_resumo_display['ID_JOGADOR'].astype(str) + ')',
+        )
+        df_mesa_resumo_img = (
+            df_mesa_resumo_display[['Conta', 'NOME_CLUBE', 'TOTAL_GANHOS', 'TOTAL_RAKE', 'QNT_MAOS']]
             .rename(columns={
-                'NOME_JOGADOR': 'Jogador',
+                'Conta':        'Jogador',
                 'NOME_CLUBE':   'Clube',
                 'TOTAL_GANHOS': 'Ganhos (R$)',
                 'TOTAL_RAKE':   'Rake (R$)',
                 'QNT_MAOS':     'Qtd. Mãos',
-            }),
+            })
+        )
+        st.dataframe(
+            df_mesa_resumo_img,
             hide_index=True, width='stretch',
             column_config={
                 'Ganhos (R$)': st.column_config.NumberColumn(format='localized'),
                 'Rake (R$)':   st.column_config.NumberColumn(format='localized'),
             },
         )
-        df_mesa = df_sf[df_sf['ID_MESA'] == mesa_selecionada].sort_values(['ID_MAO', 'ID_JOGADOR']).copy()
+        st.download_button(
+            label='📷 Exportar tabela como imagem',
+            data=gerar_imagem_df(
+                df_mesa_resumo_img,
+                formatar_colunas=['Ganhos (R$)', 'Rake (R$)'],
+            ),
+            file_name=f'mesa-{mesa_selecionada}.png',
+            mime='image/png',
+        )
+        df_mesa = df_mesa_base.sort_values(['ID_MAO', 'ID_JOGADOR']).copy()
+        df_mesa.insert(0, 'Conta', df_mesa['NOME_JOGADOR'] + ' (' + df_mesa['ID_JOGADOR'].astype(str) + ')')
         st.dataframe(
-            df_mesa[['DATA', 'ID_JOGADOR', 'NOME_JOGADOR', 'NOME_CLUBE', 'ID_MAO', 'GANHOS', 'RAKE', 'IP', 'IP_PAIS']]
+            df_mesa[['DATA', 'Conta', 'NOME_CLUBE', 'ID_MAO', 'GANHOS', 'RAKE', 'IP', 'IP_PAIS']]
             .rename(columns={
-                'DATA':         'Data',
-                'ID_JOGADOR':   'ID Jogador',
-                'NOME_JOGADOR': 'Jogador',
-                'NOME_CLUBE':   'Clube',
-                'ID_MAO':       'ID Mão',
-                'GANHOS':       'Ganhos (R$)',
-                'RAKE':         'Rake (R$)',
-                'IP_PAIS':      'País (IP)',
+                'DATA':      'Data',
+                'NOME_CLUBE':'Clube',
+                'ID_MAO':    'ID Mão',
+                'GANHOS':    'Ganhos (R$)',
+                'RAKE':      'Rake (R$)',
+                'IP_PAIS':   'País (IP)',
             }),
             hide_index=True, width='stretch',
             column_config={
@@ -448,7 +547,7 @@ with aba_snowflake:
             ).reset_index()
             .rename(columns={'ID_JOGADOR': 'Player ID','NOME_JOGADOR': 'Player Name', 'NOME_CLUBE': 'Club Name'})
         )
-        df_sf_norm = df_sf.rename(columns={'ID_MESA': 'Game ID', 'ID_JOGADOR': 'Player ID'})
+        df_sf_norm = df_sf.rename(columns={'ID_MESA': 'Game ID', 'ID_JOGADOR': 'Player ID', 'NOME_JOGADOR': 'Player Name'})
 
         st.markdown('---')
         protocolo_sf = st.text_input(
@@ -463,7 +562,7 @@ with aba_snowflake:
         st.download_button(
             label='📄 Baixar Relatório em PDF',
             data=pdf_sf,
-            file_name=f'#{protocolo_sf}.pdf',
+            file_name=f'MESAS-{protocolo_sf}.pdf',
             mime='application/pdf',
             use_container_width=True,
         )

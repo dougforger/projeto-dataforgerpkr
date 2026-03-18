@@ -9,3 +9,4 @@ pydeck
 staticmap
 folium
 streamlit-folium
+dataframe-image
