@@ -1,7 +1,7 @@
 DOUG FORGER PKR — FUNCIONALIDADES DAS PÁGINAS
 ===============================================
 Sistema de integridade e segurança para a plataforma Suprema Poker.
-Gerado em: 2026-03-13
+Atualizado em: 2026-03-21
 
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -11,9 +11,9 @@ Gerado em: 2026-03-13
 Página inicial da aplicação. Apresenta um painel com descrição resumida de
 todas as ferramentas disponíveis, organizadas em três colunas:
 
-  Coluna A:  📈 Análises   +   💲 Ressarcimento
-  Coluna B:  📊 Payjump    +   🌍 Geolocalização
-  Coluna C:  🔐 Gerador de Notificações (em desenvolvimento)
+  Coluna A:  📈 Análises       +  💲 Ressarcimento
+  Coluna B:  📊 Payjump        +  📝 Relatórios
+  Coluna C:  🔐 Gerador de Notificações (em desenvolvimento) + 🃏 Hand History Viewer
 
 Cada card mostra: descrição geral, lista de recursos e fontes de dados aceitas.
 A sidebar identifica o sistema como "Doug Forger PKR — Sistema de Segurança".
@@ -203,22 +203,39 @@ EXPORTAÇÃO
 
 
 ═══════════════════════════════════════════════════════════════════════════════
-6. GEOLOCALIZAÇÃO — pages/5_🌍_Geolocalização.py
+6. RELATÓRIOS — pages/5_📝_Relatórios.py
 ═══════════════════════════════════════════════════════════════════════════════
 
-Análise geográfica standalone de contas investigadas a partir de relatórios
-de IP e/ou GPS exportados diretamente do backend.
+Relatórios geográficos e de dispositivos com três abas integradas.
+Antes chamado "Geolocalização" — expandido com consulta manual e aba de dispositivos.
 
-Fonte de dados:
-  - IP Report XLSX  (contém coluna "IP address")
-  - GPS Report XLSX (contém colunas "Coordinate X" / "GPS coordinate Y")
-  O tipo do arquivo é detectado automaticamente pelas colunas presentes.
+Fontes de dados:
+  - IP Report XLSX      (contém coluna "IP address")
+  - GPS Report XLSX     (contém colunas "Coordinate X" / "GPS coordinate Y")
+  - Same Data With Players XLSX (contém colunas "Machine Code" e "Players")
+  Tipo do arquivo é detectado automaticamente pelas colunas presentes.
 
+───────────────────────────────────────────────────────────────────────────────
+ABA CONSULTA MANUAL (IP/GPS)
+───────────────────────────────────────────────────────────────────────────────
+  - Rádio para selecionar tipo: IP ou GPS.
+  - Campo de texto livre para inserir IPs (um por linha) ou coordenadas lat,lon.
+  - Botão "Consultar" chama ip-api.com (IP) ou Nominatim (GPS).
+  - Resultado exibido em tabela com colunas de localização.
+  - Mapa Folium interativo com marcadores dos pontos consultados.
+  - Resultados persistidos em session_state até troca de tipo ou novo upload.
+
+───────────────────────────────────────────────────────────────────────────────
+ABA IMPORTAR PLANILHAS (IP/GPS)
+───────────────────────────────────────────────────────────────────────────────
 UPLOAD E PRÉ-PROCESSAMENTO
-  - Upload de até dois arquivos XLSX (IP Report e GPS Report).
-  - Detecção automática do tipo (IP ou GPS) por colunas presentes.
+  - Rádio para selecionar tipo de arquivo (IP ou GPS).
+  - Upload múltiplo de arquivos XLSX (um por jogador investigado).
+  - Detecção automática do tipo do arquivo pelas colunas presentes.
+  - Aviso de mismatch se o arquivo detectado divergir do tipo selecionado.
   - Normalização de colunas para formato interno padronizado.
   - Cache por sessão para IPs e coordenadas já consultados.
+  - Botão "🗑️ Limpar dados" apaga cache e resultados da sessão.
 
 GEOLOCALIZAÇÃO DE IPs (ip-api.com)
   - Requisições em lote de até 100 IPs por chamada.
@@ -230,30 +247,108 @@ GEOCODIFICAÇÃO REVERSA DE GPS (OpenStreetMap Nominatim)
   - Rate limiting respeitado (1 req/s conforme política do Nominatim).
   - Cache in-memory por sessão.
 
-MAPA INTERATIVO (Folium)
-  - Exibido na interface via streamlit_folium.
-  - Marcadores circulares coloridos por conta (paleta de até 10 cores).
-  - Cada cor representa um JOGADOR_ID diferente.
-  - Popup com nome do jogador, cidade, estado e país ao clicar no marcador.
-  - Tooltip com nome do jogador ao passar o mouse.
-  - Controle de camadas: 🗺️ Ruas (OpenStreetMap) / 🛰️ Satélite (Esri).
-    (Alternância via JavaScript no browser — sem rerun do Streamlit.)
+RESULTADOS
+  - Tabela de resumo deduplificada (sem repetições de endereço).
+  - Expander com tabela completa (todos os registros brutos).
+  - Mapa interativo Folium com marcadores coloridos por JOGADOR_ID.
+  - Marcadores com popup (nome, cidade, estado, país) e tooltip.
+  - Camadas de mapa: 🗺️ Ruas (OpenStreetMap) / 🛰️ Satélite (Esri).
 
-DETECÇÃO DE ALERTAS
-  - Múltiplos países: mesmo jogador logou de países diferentes.
+DETECÇÃO DE ALERTAS (IP)
+  - Múltiplos países: mesmo jogador com IPs de países diferentes (possível VPN).
   - IPs compartilhados: mesmo IP usado por contas distintas.
-  - Múltiplas cidades: mesmo jogador logou de cidades diferentes.
-  - Dispositivos compartilhados: mesmo dispositivo em contas distintas.
 
-EXPORTAÇÃO PDF (landscape A4)
-  - Mapa estático embutido (gerado via staticmap).
+DETECÇÃO DE ALERTAS (GPS)
+  - Múltiplas cidades: mesmo jogador com coordenadas em cidades distintas.
+  - Dispositivos compartilhados: mesmo Device Code em contas distintas.
+
+EXPORTAÇÃO PDF
+  - Estado-máquina: botão "Gerar PDF" → processamento → botão "Baixar PDF".
+  - Tabelas de resumo IP e GPS com legenda explicativa.
   - Seção de alertas com ícone de criticidade.
-  - Tabela resumo de IPs: Jogador | IP | Cidade | Estado | País.
-    (Legenda: "Registros únicos de endereços IP por conta...")
-  - Tabela resumo de GPS: Jogador | Cidade | Estado | País.
-    (Legenda: "Registros únicos de localização por coordenadas GPS...")
-  - As tabelas de alerta possuem descrição própria (sem legenda adicional).
-  - Campo "Número do Protocolo" para identificar o relatório.
+  - Mapas estáticos embutidos (gerados via staticmap).
+  - Nome do arquivo: geolocalizacao_{tipo}_{ids}.pdf
+
+───────────────────────────────────────────────────────────────────────────────
+ABA DISPOSITIVOS
+───────────────────────────────────────────────────────────────────────────────
+Fonte de dados: arquivo "Same Data With Players" do backend (aceita múltiplos).
+
+UPLOAD E PROCESSAMENTO
+  - Upload múltiplo de arquivos XLSX.
+  - Validação das colunas obrigatórias "Machine Code" e "Players".
+  - Parsing do campo Players: extrai pares (nome, ID) de cada conta.
+  - Censura do Machine Code: mantém 8 primeiros + últimos 4 chars do UUID.
+  - Identificação automática do "dono" da investigação (conta em 100% das linhas).
+  - Botão "🗑️ Limpar dados" apaga resultados da sessão.
+
+RESULTADOS
+  - Uma tabela por arquivo com: código censurado, sistema, tipo, modelo, OS,
+    emulador (sim/não), repetições, nº de contas e lista de contas.
+  - Título de cada tabela inferido do nome da conta investigada.
+  - Alerta cruzado: contas que aparecem nos dispositivos de múltiplos arquivos.
+
+EXPORTAÇÃO PDF
+  - Estado-máquina: botão "Gerar PDF" → processamento → botão "Baixar PDF".
+  - Uma seção por arquivo (subtítulo + tabela de dispositivos).
+  - Seção de alertas cruzados ao final.
+  - Nome do arquivo: dispositivos_{ids}.pdf
+
+
+═══════════════════════════════════════════════════════════════════════════════
+7. HAND HISTORY VIEWER — pages/7_🃏_Hand_History.py
+═══════════════════════════════════════════════════════════════════════════════
+
+Visualizador de histórico de mãos exportado do backend com filtros interativos
+e exportação em PDF com índice navegável.
+
+Toda a lógica de parsing e PDF está em utils/hand_history_parser.py.
+A página contém exclusivamente a camada de interface Streamlit.
+
+Fonte de dados: arquivo HTML exportado pelo backend (Hand History).
+
+UPLOAD
+  - Upload de arquivo HTML via sidebar.
+  - Parsing automático do arquivo: divide em blocos por mão e extrai metadados,
+    ações por rodada e resultado de cada mão.
+  - Informa total de mãos encontradas e blocos ignorados por erro de parse.
+
+FILTROS (sidebar)
+  - Seleção de "Minhas Contas" via multiselect (nome + ID).
+  - Modo de exibição de cartas:
+      · Revelar minhas contas — mostra cartas apenas das contas selecionadas
+      · Revelar todos         — mostra cartas de todos os jogadores
+      · Ocultar todos         — oculta cartas de todos (exibe 🃏 por carta)
+  - Checkbox "Apenas mãos com minhas contas" para filtrar a lista exibida.
+
+EXIBIÇÃO DAS MÃOS
+  Cada mão é exibida em um expander colapsado com etiqueta:
+    [★] Mão #N | Hand ID: X | Tipo | Data Hora | Blinds: Y
+    (★ aparece quando a mão contém alguma conta selecionada)
+
+  Dentro do expander:
+  - Título detalhado da mão (número, tipo, data/hora, blinds).
+  - Métricas: pote total, rake total, nº de jogadores, nº de rodadas.
+  - Resultado das contas selecionadas: valor da mão + acumulado entre parênteses.
+  - Rodadas (PREFLOP, FLOP, TURN, RIVER):
+      Cartas comunitárias (emoji de naipe).
+      Tabela de ações: Posição | Jogador | Ação | Valor | Tempo | Operação | Cartas | Fichas.
+      Pote ao final da rodada (caption).
+  - Resultado final:
+      Tabela com colorização verde/vermelho conforme resultado por jogador.
+      Colunas: Posição | Jogador | Resultado | Rake | Investido | Ganho Bruto | Cartas | Combinação.
+
+EXPORTAÇÃO PDF (sidebar)
+  - Botão "📄 Gerar PDF das mãos exibidas" → botão "📥 Baixar PDF".
+  - O PDF inclui apenas as mãos visíveis (respeitando o filtro ativo).
+  - Estrutura do PDF:
+      · Parágrafo introdutório (total de mãos, mãos com contas selecionadas).
+      · Índice clicável (6 mãos por linha): clique navega à página da mão.
+        Mãos com contas selecionadas são marcadas com ★.
+      · Uma página por mão: cabeçalho, resultado das contas, rodadas, resultado.
+      · Cartas respeitam o modo de exibição selecionado.
+      · Link "↑ Voltar ao índice" ao final de cada mão.
+  - Nome do arquivo: hand-history-{game_id}.pdf
 
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -262,9 +357,10 @@ OBSERVAÇÕES GERAIS
 
 PDFS
   - Todos os PDFs usam fonte Calibri Light (normal, bold, italic, bold-italic).
+  - Naipes (♠♥♦♣) nos PDFs usam a fonte SegoeUISymbol (arquivo seguisym.ttf).
   - Todas as tabelas possuem legenda explicativa em itálico cinza antes delas.
   - Os PDFs são gerados em memória (bytes) e oferecidos como download.
-  - O cabeçalho inclui logo, data de geração e número de protocolo.
+  - O cabeçalho inclui logo institucional; rodapé inclui site e e-mail.
 
 DADOS ESTÁTICOS (atualização manual)
   - data/clubes.csv  — clube_id, clube_nome, liga_id, liga_nome
@@ -277,3 +373,7 @@ BANCO DE DADOS
 ARQUIVOS XLSX MALFORMADOS
   - Exportações do backend frequentemente têm styles.xml corrompido.
   - O módulo utils/arquivo_utils.py corrige automaticamente antes de processar.
+
+CACHE DE GEOLOCALIZAÇÃO
+  - cache_ips e cache_geo são dicts no st.session_state.
+  - Evitam repetição de chamadas às APIs durante a sessão do usuário.

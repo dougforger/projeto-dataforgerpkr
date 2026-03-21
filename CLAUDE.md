@@ -55,7 +55,8 @@ Segue o padrão multi-página do Streamlit. O `início.py` é a homepage; as pá
 | `pages/2_📊_Payjump.py` | Calculadora de ressarcimentos em torneios com reentrada. Upload XLSX + merge com configs de clubes e ligas. Gera strings formatadas para inserção no sistema. |
 | `pages/3_🔐_Gerador_de_Notificações.py` | *(Em desenvolvimento)* Geração de notificações multilíngues (PT/EN/ES) para jogadores afetados por ações de segurança. |
 | `pages/4_💲_Ressarcimento.py` | Cálculo de ressarcimentos por bots/fraudadores — upload CSV Snowflake, banco SQLite de fraudadores, distribuição proporcional, exportação Excel. |
-| `pages/5_🌍_Geolocalização.py` | Análise geográfica standalone de contas investigadas — geolocalização de IPs, geocodificação reversa de GPS, mapa interativo Folium + PDF com mapa estático. |
+| `pages/5_📝_Relatórios.py` | Relatórios geográficos e de dispositivos — três abas: Consulta Manual (IP/GPS sem upload), Importar Planilhas (IP/GPS com mapa Folium, alertas e PDF), Dispositivos (análise "Same Data With Players" com alertas cruzados e PDF). |
+| `pages/7_🃏_Hand_History.py` | Visualizador de hand history — parser do HTML exportado pelo backend, filtros por conta e modo de cartas, resultado acumulado por conta, exportação em PDF com índice navegável. |
 
 ---
 
@@ -104,15 +105,36 @@ Integração com APIs externas de geolocalização:
 - `buscar_geocodificacao_reversa(df_coordenadas, cache_geo)` — converte coordenadas GPS em endereço textual via OpenStreetMap Nominatim. Respeita rate limiting com `DELAY_NOMINATIM`.
 
 #### `utils/analise_geo.py`
-Análise geográfica completa e geração de PDF para a página Geolocalização:
-- Paletas de cores (`PALETA_HEX`, `PALETA_RGBA`) — até 10 contas, cor distinta por conta em mapas e tabelas
-- Estilos internos para células de tabela ReportLab (`_estilo_cabecalho`, `_estilo_celula`)
-- `preparar_dados_ip(df_ip_raw)` — normaliza colunas do IP Report XLSX do backend
-- `preparar_dados_gps(df_gps_raw)` — normaliza colunas do GPS Report XLSX do backend
-- `detectar_alertas(df_ips_geo, df_gps_geo)` — detecta: múltiplos países, IPs compartilhados, múltiplas cidades, dispositivos compartilhados. Retorna lista de alertas.
-- `gerar_mapa_folium(df_ips_geo, df_gps_geo)` — gera mapa interativo HTML com marcadores coloridos por conta (Folium)
-- `gerar_mapa_estatico(df_ips_geo, df_gps_geo, largura, altura)` — gera imagem PNG com staticmap para embutir no PDF
-- `gerar_pdf_geo(protocolo, df_ips_geo, df_gps_geo, alertas, img_mapa)` → `bytes` — gera PDF landscape com: mapa estático, seção de alertas, tabela IP resumo (com `ESTILO_LEGENDA`), tabela GPS resumo (com `ESTILO_LEGENDA`). As tabelas de alerta já possuem `_paragrafo_alerta()` como explicação e não recebem legenda adicional.
+Análise geográfica completa e geração de PDFs para a página Relatórios:
+- Paleta de cores `PALETA_HEX` — até 10 contas, cor distinta por conta em mapas e tabelas
+- `mapa_cores_hex_por_id(ids)` — mapeia IDs ordenados para cores da paleta
+- `preparar_df_ip(df_bruto)` — normaliza colunas do IP Report XLSX do backend
+- `preparar_df_gps(df_bruto)` — normaliza colunas do GPS Report XLSX do backend
+- `resumo_ip(df)` / `resumo_gps(df)` — deduplica registros para visão resumida
+- `detectar_alertas_ip(df)` → `{'multiplos_paises', 'ips_compartilhados'}` — detecta anomalias em registros de IP
+- `detectar_alertas_gps(df)` → `{'multiplas_cidades', 'dispositivos_compartilhados'}` — detecta anomalias em GPS
+- `detectar_alertas_dispositivos(lista_nome_df)` → `{'contas_cruzadas'}` — detecta contas em múltiplos arquivos
+- `gerar_elementos_mapa_pdf(df, largura_util)` → lista de elementos ReportLab (imagem + legenda) reutilizável
+- `preparar_df_dispositivos(df_bruto)` — normaliza e censura colunas do arquivo "Same Data With Players"
+- `gerar_pdf_geo(titulo, df_ip, df_gps, alertas_ip, alertas_gps)` → `bytes` — PDF de geolocalização com seções IP/GPS, alertas e mapas estáticos
+- `gerar_pdf_dispositivos(titulo, lista_nome_df, alertas)` → `bytes` — PDF landscape de dispositivos com alertas cruzados
+- `_inferir_titulo_investigacao(df)` / `_inferir_id_investigacao(df)` — identifica conta investigada (usadas pela página)
+- `_encontrar_ids_compartilhados(df, coluna_grupo, coluna_jogador)` — função interna, também importada por `analise_snowflake.py`
+
+#### `utils/mapa_utils.py`
+Utilitário de mapa interativo Folium para uso nas páginas Streamlit:
+- `exibir_mapa_folium(df, key)` — renderiza mapa interativo com marcadores coloridos por `JOGADOR_ID`, camadas de Ruas e Satélite, popup com localização e legenda de cores abaixo do mapa
+- Centraliza a lógica de mapa para reutilização entre Análises (Snowflake) e Relatórios
+
+#### `utils/hand_history_parser.py`
+Parser de HTML de hand history e geração de PDF — sem código Streamlit (testável isoladamente):
+- `parse_arquivo_html(conteudo_html)` → `(lista_maos, n_erros)` — divide o arquivo em blocos e parseia cada mão
+- `parse_mao(html_bloco)` → dict com `metadados`, `rodadas` e `resultado`
+- `coletar_jogadores(lista_maos)` → `{id: nome}` — mapa de todos os jogadores presentes
+- `ids_contas_na_mao(mao)` → `set` — IDs dos jogadores presentes nas ações de uma mão
+- `renderizar_cartas(lista_cartas, revelar)` → str para exibição Streamlit (com emoji de naipe)
+- `_fmt_br(valor, decimais, sinal)` — formata número no padrão brasileiro
+- `gerar_pdf_hand_history(maos, contas_selecionadas, modo_cartas, game_id)` → `bytes` — PDF com índice navegável clicável, seções por mão (ações + resultado), links internos
 
 #### `utils/database.py`
 Camada de persistência (SQLAlchemy + SQLite):
@@ -167,13 +189,28 @@ CSV Snowflake → preprocessar_dados() → resumo_por_jogador()
     → PDF com seções Cash + Dispositivos + IPs + GPS
 ```
 
-### Geolocalização (página 5)
+### Relatórios (página 5)
 ```
 IP Report XLSX + GPS Report XLSX (backend)
-    → preparar_dados_ip() + preparar_dados_gps()
+    → preparar_df_ip() + preparar_df_gps()
     → buscar_localizacao_ips() [ip-api.com] + buscar_geocodificacao_reversa() [Nominatim]
-    → detectar_alertas() → gerar_mapa_folium() [HTML interativo]
-    → gerar_mapa_estatico() + gerar_pdf_geo() [PDF landscape]
+    → detectar_alertas_ip() + detectar_alertas_gps()
+    → exibir_mapa_folium() [HTML interativo, via mapa_utils.py]
+    → gerar_pdf_geo() [PDF portrait/landscape com mapas estáticos]
+
+Same Data With Players XLSX (backend, múltiplos arquivos)
+    → preparar_df_dispositivos() [censura UUID]
+    → detectar_alertas_dispositivos() [cruzamento entre arquivos]
+    → gerar_pdf_dispositivos() [PDF landscape]
+```
+
+### Hand History (página 7)
+```
+Hand History HTML (backend)
+    → parse_arquivo_html() → lista de mãos parseadas
+    → coletar_jogadores() [mapa id→nome para o multiselect]
+    → Filtros de conta + modo de cartas na UI
+    → gerar_pdf_hand_history() [PDF com índice navegável + tabelas de ações/resultado]
 ```
 
 ### Payjump (página 2)
@@ -212,6 +249,8 @@ CSV Snowflake → Identificação de fraudadores (SQLite) → Cálculo de saldo 
 - **Limite de modalidade**: `LIMITE_MODALIDADE_CASH = 99` — linhas com `ID_MODALIDADE > 99` são torneios e removidas da análise de cash game (Snowflake).
 - **Legendas nos PDFs**: todas as tabelas em todos os PDFs gerados pelo sistema possuem `story.append(Paragraph('...', ESTILO_LEGENDA))` imediatamente antes de `adicionar_tabela()`. Manter esse padrão ao adicionar novas tabelas.
 - **`montar_tabela_comuns`**: backend usa sem `coluna_nome` (3 colunas, `COLS_3`); Snowflake usa com `coluna_nome='NOME_MESA'` (4 colunas, `COLS_4`).
-- **Funções internas em `analise_geo.py`**: prefixo `_` indica uso exclusivamente interno ao módulo. Não chamar de outros arquivos.
+- **Funções internas em `analise_geo.py`**: prefixo `_` indica uso exclusivamente interno ao módulo. Exceção documentada: `_encontrar_ids_compartilhados` é importada por `analise_snowflake.py` e `_inferir_titulo_investigacao` / `_inferir_id_investigacao` são importadas pela página de Relatórios.
 - **Cache de geolocalização**: `cache_ips` e `cache_geo` são dicts mantidos no `st.session_state` para evitar requisições duplicadas entre interações do usuário.
+- **`utils/hand_history_parser.py`**: módulo sem Streamlit — contém todo o parsing do HTML e a geração de PDF do Hand History. A página `7_🃏_Hand_History.py` importa deste módulo e contém apenas a camada de UI.
+- **`utils/mapa_utils.py`**: centraliza a lógica do mapa Folium interativo. Importar e usar `exibir_mapa_folium(df, key)` em vez de duplicar código de mapa entre páginas.
 - O projeto é de uso interno (licença proprietária). Dados sensíveis não devem sair dos sistemas internos.

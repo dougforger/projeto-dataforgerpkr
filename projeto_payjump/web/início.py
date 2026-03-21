@@ -62,18 +62,20 @@ Calculadora de ressarcimentos para torneios com reentrada, baseada na distribui�
 **Fonte de dados:** MTT Player List XLSX exportado do backend
 ''')
 
-    st.markdown('''#### 🌍 Geolocalização
-Análise geográfica das contas investigadas com base em registros de endereço IP e coordenadas GPS, com mapa interativo e relatório em PDF.
+    st.markdown('''#### 📝 Relatórios
+Relatórios geográficos e de dispositivos a partir de exportações do backend, com mapa interativo e exportação em PDF.
 
 **Recursos:**
-- Geolocalização de IPs via ip-api.com (até 100 por requisição)
-- Geocodificação reversa de coordenadas GPS via OpenStreetMap Nominatim
-- Mapa interativo com marcadores coloridos por conta (Folium)
-- Detecção de alertas: múltiplos países, IPs compartilhados, múltiplas cidades, dispositivos compartilhados
-- Relatório em PDF com mapa estático e tabelas de resumo
-- Cache de resultados para evitar requisições duplicadas
+- Consulta manual de IPs e coordenadas GPS (sem upload de arquivo)
+- Upload de IP Report e GPS Report XLSX (detecção automática do tipo)
+- Geolocalização de IPs via ip-api.com · geocodificação reversa via Nominatim
+- Mapa interativo Folium com marcadores coloridos por conta
+- Detecção de alertas: VPN, IPs/dispositivos compartilhados, múltiplas cidades
+- Upload de relatório "Same Data With Players" para análise de dispositivos
+- Alertas cruzados entre múltiplos arquivos de dispositivos
+- Exportação em PDF (geolocalização e dispositivos)
 
-**Fontes de dados:** exportação IP Report XLSX · exportação GPS Report XLSX do backend
+**Fontes de dados:** IP Report XLSX · GPS Report XLSX · Same Data With Players XLSX
 ''')
 
 with col_c:
@@ -89,6 +91,21 @@ Geração de notificações multilíngues para envio aos jogadores afetados por 
 - Integração com cadastro de ligas e idiomas
 
 **Fonte de dados:** `data/clubes.csv` · `data/ligas.csv`
+''')
+
+    st.markdown('''#### 🃏 Hand History Viewer
+Visualizador de histórico de mãos exportado do backend com filtros interativos e exportação em PDF.
+
+**Recursos:**
+- Parser do arquivo HTML exportado pelo backend (múltiplas mãos por arquivo)
+- Seleção de "minhas contas" para revelar cartas e marcar mãos relevantes
+- Filtro para exibir apenas mãos com as contas selecionadas
+- Modos de exibição de cartas: revelar minhas contas / revelar todos / ocultar todos
+- Métricas por mão: pote, rake, jogadores, rodadas
+- Resultado acumulado por conta ao longo de todas as mãos exibidas
+- Exportação em PDF com índice navegável e links internos
+
+**Fonte de dados:** Hand History HTML exportado do backend
 ''')
 
 st.markdown('---')

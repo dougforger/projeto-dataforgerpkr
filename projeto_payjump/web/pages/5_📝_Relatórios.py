@@ -1,23 +1,26 @@
-import folium
 import pandas as pd
 import streamlit as st
-from streamlit_folium import st_folium
 
 from utils.analise_geo import (
+    _inferir_id_investigacao,
+    _inferir_titulo_investigacao,
+    detectar_alertas_dispositivos,
     detectar_alertas_gps,
     detectar_alertas_ip,
+    gerar_pdf_dispositivos,
     gerar_pdf_geo,
-    mapa_cores_hex_por_id,
+    preparar_df_dispositivos,
     preparar_df_gps,
     preparar_df_ip,
     resumo_gps,
     resumo_ip,
 )
-from utils.arquivo_utils import carregar_xlsx
+from utils.arquivo_utils import carregar_xlsx, corrigir_xlsx_memoria
 from utils.geolocation import buscar_geocodificacao_reversa, buscar_localizacao_ips
+from utils.mapa_utils import exibir_mapa_folium
 
-st.set_page_config(page_title='Geolocalização', page_icon='🌍', layout='wide')
-st.title('🌍 Geolocalização')
+st.set_page_config(page_title='Relatórios', page_icon='📝', layout='wide')
+st.title('📝 Relatórios')
 st.markdown('---')
 
 # -----------------------------------------------------
@@ -27,11 +30,13 @@ _CHAVES_CACHE  = ('cache_ips', 'cache_geo')
 _CHAVES_DADOS  = ('df_ip_resultado', 'df_gps_resultado', 'alertas_ip', 'alertas_gps',
                   'pdf_bytes', 'pdf_nome')
 _CHAVES_MANUAL = ('df_manual_resultado', 'tipo_manual_resultado')
+_CHAVES_DISP   = ('lista_dispositivos', 'alertas_dispositivos',
+                  'pdf_bytes_disp', 'pdf_nome_disp')
 
 for chave in _CHAVES_CACHE:
     if chave not in st.session_state:
         st.session_state[chave] = {}
-for chave in _CHAVES_DADOS + _CHAVES_MANUAL:
+for chave in _CHAVES_DADOS + _CHAVES_MANUAL + _CHAVES_DISP:
     if chave not in st.session_state:
         st.session_state[chave] = None
 
@@ -49,83 +54,24 @@ def _detectar_tipo_arquivo(df: pd.DataFrame) -> str | None:
     return None
 
 
-def _exibir_mapa_folium(df: pd.DataFrame, key: str) -> None:
-    '''Exibe mapa folium com marcadores coloridos por JOGADOR_ID e layer control.
+def _detectar_tipo_dispositivo(df: pd.DataFrame) -> bool:
+    '''Retorna True se o DataFrame parecer um arquivo "Same Data With Players".'''
+    return 'Machine Code' in df.columns and 'Players' in df.columns
 
-    O layer control (🗺️ Ruas / 🛰️ Satélite) é JavaScript puro no browser —
-    não causa rerun do Streamlit, então os dados permanecem na tela.
-    '''
-    colunas_mapa = ['LATITUDE', 'LONGITUDE'] + [
-        c for c in ('JOGADOR', 'JOGADOR_ID', 'CIDADE', 'ESTADO', 'PAIS') if c in df.columns
-    ]
-    df_mapa = df[colunas_mapa].dropna(subset=['LATITUDE', 'LONGITUDE'])
 
-    if df_mapa.empty:
-        st.info('Sem coordenadas para exibir no mapa.')
+def exibir_alertas_dispositivos(alertas: dict) -> None:
+    '''Exibe contas que aparecem nos dispositivos de mais de um arquivo investigado.'''
+    df_cruzadas = alertas.get('contas_cruzadas', pd.DataFrame())
+    if df_cruzadas.empty:
+        st.success('✅ Nenhuma conta em comum entre os arquivos investigados.')
         return
-
-    lat_c = float(df_mapa['LATITUDE'].mean())
-    lon_c = float(df_mapa['LONGITUDE'].mean())
-
-    ids       = df_mapa['JOGADOR_ID'].dropna().unique().tolist() if 'JOGADOR_ID' in df_mapa.columns else []
-    cores_hex = mapa_cores_hex_por_id(ids) if ids else {}
-
-    m = folium.Map(location=[lat_c, lon_c], zoom_start=4, tiles=None)
-
-    folium.TileLayer('OpenStreetMap', name='🗺️ Ruas').add_to(m)
-    folium.TileLayer(
-        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        attr='Tiles &copy; Esri &mdash; Source: Esri, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP',
-        name='🛰️ Satélite',
-        show=False,
-    ).add_to(m)
-
-    for _, row in df_mapa.iterrows():
-        id_  = row.get('JOGADOR_ID')
-        cor  = cores_hex.get(id_, '#E31A1C') if ids else '#E31A1C'
-        nome = row.get('JOGADOR', f'{row["LATITUDE"]:.4f}, {row["LONGITUDE"]:.4f}')
-        popup_html = (
-            f'<b>{nome}</b><br>'
-            f'{row.get("CIDADE", "")} — {row.get("ESTADO", "")} — {row.get("PAIS", "")}'
-        )
-        folium.CircleMarker(
-            location=[float(row['LATITUDE']), float(row['LONGITUDE'])],
-            radius=8,
-            color=cor,
-            fill=True,
-            fill_color=cor,
-            fill_opacity=0.9,
-            popup=folium.Popup(popup_html, max_width=250),
-            tooltip=nome,
-        ).add_to(m)
-
-    folium.LayerControl().add_to(m)
-    st_folium(m, use_container_width=True, height=450, key=key, returned_objects=[])
-    _exibir_legenda(df_mapa)
-
-
-def _exibir_legenda(df_mapa: pd.DataFrame) -> None:
-    '''Renderiza legenda de cores abaixo do mapa.'''
-    if 'JOGADOR_ID' not in df_mapa.columns:
-        return
-    ids = df_mapa['JOGADOR_ID'].dropna().unique().tolist()
-    if not ids:
-        return
-    cores_hex = mapa_cores_hex_por_id(ids)
-    st.caption('**Legenda**')
-    cols = st.columns(min(len(ids), 5))
-    for i, id_ in enumerate(sorted(ids)):
-        nome = (
-            df_mapa[df_mapa['JOGADOR_ID'] == id_]['JOGADOR'].iloc[0]
-            if 'JOGADOR' in df_mapa.columns
-            else str(id_)
-        )
-        hex_cor = cores_hex[id_]
-        cols[i % 5].markdown(
-            f'<span style="color:{hex_cor};font-size:1.3em">■</span> **{nome}**<br>'
-            f'<small>ID: {id_}</small>',
-            unsafe_allow_html=True,
-        )
+    st.error(
+        f'🔴 **{len(df_cruzadas)} conta(s)** aparecem nos dispositivos de múltiplos arquivos'
+    )
+    st.dataframe(
+        df_cruzadas.rename(columns={'CONTA': 'Conta', 'ARQUIVOS': 'Aparece nos arquivos'}),
+        use_container_width=True, hide_index=True,
+    )
 
 
 def exibir_alertas(alertas: dict, tipo: str) -> None:
@@ -167,7 +113,9 @@ def exibir_alertas(alertas: dict, tipo: str) -> None:
 # -----------------------------------------------------
 # ABAS
 # -----------------------------------------------------
-tab_manual, tab_planilha = st.tabs(['🔍 Consulta Manual', '📂 Importar Planilhas'])
+tab_manual, tab_planilha, tab_dispositivos = st.tabs(
+    ['🔍 IP/GPS - Consulta Manual', '📂 IP/GPS - Importar Planilhas', '📱 Dispositivos']
+)
 
 
 # =====================================================
@@ -245,7 +193,7 @@ with tab_manual:
             cols_exibir = [c for c in ('LATITUDE', 'LONGITUDE', 'CIDADE', 'ESTADO', 'PAIS')
                            if c in df_man.columns]
         st.dataframe(df_man[cols_exibir], use_container_width=True, hide_index=True)
-        _exibir_mapa_folium(df_man, f'manual_{tipo_manual.lower()}')
+        exibir_mapa_folium(df_man, f'manual_{tipo_manual.lower()}')
 
 
 # =====================================================
@@ -391,7 +339,7 @@ with tab_planilha:
 
         # Mapa
         with st.expander('🗺️ Mapa', expanded=True):
-            _exibir_mapa_folium(df_exibir, 'planilha')
+            exibir_mapa_folium(df_exibir, 'planilha')
 
         # Alertas
         tem_alertas = any(not v.empty for v in alertas_exibir.values()) if alertas_exibir else False
@@ -401,4 +349,146 @@ with tab_planilha:
         ):
             if alertas_exibir:
                 exibir_alertas(alertas_exibir, tipo_resultado)
+
+
+# =====================================================
+# ABA DISPOSITIVOS
+# =====================================================
+with tab_dispositivos:
+    st.caption(
+        'Faça upload dos arquivos **Same Data With Players** exportados do backend. '
+        'Aceita múltiplos arquivos — os dados serão combinados automaticamente.'
+    )
+
+    col_up_disp, col_limpa_disp = st.columns([4, 1], vertical_alignment='bottom')
+    with col_up_disp:
+        arquivos_disp = st.file_uploader(
+            'Selecione os arquivos de dispositivos',
+            type=['xlsx'],
+            accept_multiple_files=True,
+            key='uploader_dispositivos',
+        )
+    with col_limpa_disp:
+        if st.button('🗑️ Limpar dados', key='disp-limpa-cache'):
+            for chave in _CHAVES_DISP:
+                st.session_state[chave] = None
+            st.rerun()
+
+    if arquivos_disp:
+        st.caption(f'{len(arquivos_disp)} arquivo(s) selecionado(s)')
+
+    col_proc_disp, col_pdf_disp = st.columns([1, 1])
+    with col_proc_disp:
+        processar_disp = st.button(
+            '⚙️ Processar', key='btn_processar_disp',
+            disabled=not arquivos_disp, use_container_width=True,
+        )
+
+    if processar_disp and arquivos_disp:
+        lista_processada = []
+        erros_arquivos   = []
+        with st.spinner('Carregando e corrigindo arquivos...'):
+            for arquivo in arquivos_disp:
+                try:
+                    import io as _io
+                    buf      = corrigir_xlsx_memoria(_io.BytesIO(arquivo.read()))
+                    df_bruto = pd.read_excel(buf)
+                    if not _detectar_tipo_dispositivo(df_bruto):
+                        erros_arquivos.append(
+                            f'`{arquivo.name}` não possui as colunas esperadas '
+                            f'(Machine Code e Players) — ignorado.'
+                        )
+                        continue
+                    df_proc = preparar_df_dispositivos(df_bruto)
+                    lista_processada.append((arquivo.name, df_proc))
+                except ValueError as e:
+                    erros_arquivos.append(f'`{arquivo.name}`: {e}')
+
+        for msg in erros_arquivos:
+            st.warning(f'⚠️ {msg}')
+
+        if lista_processada:
+            alertas_disp = detectar_alertas_dispositivos(lista_processada)
+            st.session_state.lista_dispositivos  = lista_processada
+            st.session_state.alertas_dispositivos = alertas_disp
+            st.session_state.pdf_bytes_disp       = None
+            st.session_state.pdf_nome_disp        = None
+            total_disp = sum(len(df) for _, df in lista_processada)
+            st.success(
+                f'✅ {len(lista_processada)} arquivo(s) processado(s) — '
+                f'{total_disp} dispositivo(s) no total.'
+            )
+        elif not erros_arquivos:
+            st.error('❌ Nenhum arquivo válido encontrado.')
+
+    # Botão PDF — mesmo padrão estado-máquina das outras abas
+    _lista_disp     = st.session_state.lista_dispositivos
+    _alertas_disp   = st.session_state.alertas_dispositivos
+    _pdf_bytes_disp = st.session_state.get('pdf_bytes_disp')
+    _pdf_nome_disp  = st.session_state.get('pdf_nome_disp') or 'dispositivos.pdf'
+
+    with col_pdf_disp:
+        if _pdf_bytes_disp is not None:
+            st.download_button(
+                label='📥 Baixar PDF',
+                data=_pdf_bytes_disp,
+                file_name=_pdf_nome_disp,
+                mime='application/pdf',
+                key='btn_baixar_pdf_disp',
+                use_container_width=True,
+            )
+            st.success('✅ Arquivo PDF pronto para download.')
+        else:
+            if st.button('📄 Gerar PDF', key='btn_gerar_pdf_disp',
+                         disabled=not _lista_disp, use_container_width=True):
+                with st.spinner('Gerando PDF...'):
+                    st.session_state.pdf_bytes_disp = gerar_pdf_dispositivos(
+                        titulo='Relatório de Dispositivos',
+                        lista_nome_df=_lista_disp,
+                        alertas=_alertas_disp or {},
+                    )
+                _ids_pdf = [_inferir_id_investigacao(df) for _, df in _lista_disp]
+                _ids_str = '_'.join(i for i in _ids_pdf if i) or 'relatorio'
+                st.session_state.pdf_nome_disp = f'dispositivos_{_ids_str}.pdf'
+                st.rerun()
+
+    # Resultados — uma tabela por arquivo
+    if _lista_disp:
+        st.markdown('---')
+
+        _cols_resumo = ('CODIGO_CENSURADO', 'SISTEMA', 'DISPOSITIVO', 'MODELO',
+                        'VERSAO_OS', 'SIMULADOR', 'REPETICOES', 'N_CONTAS', 'CONTAS')
+        _renomear_resumo = {
+            'CODIGO_CENSURADO': 'Código (Censurado)',
+            'SISTEMA':          'Sistema',
+            'DISPOSITIVO':      'Tipo',
+            'MODELO':           'Modelo',
+            'VERSAO_OS':        'Versão OS',
+            'SIMULADOR':        'Emulador',
+            'REPETICOES':       'Repetições',
+            'N_CONTAS':         'Nº Contas',
+            'CONTAS':           'Contas',
+        }
+
+        st.subheader('📊 Dispositivos')
+        for i, (_, df_arq) in enumerate(_lista_disp):
+            titulo_arq = _inferir_titulo_investigacao(df_arq) or f'Investigação {i + 1}'
+            st.markdown(f'**{titulo_arq}**')
+            cols_exibir = [c for c in _cols_resumo if c in df_arq.columns]
+            st.dataframe(
+                df_arq[cols_exibir].rename(columns=_renomear_resumo),
+                use_container_width=True, hide_index=True,
+            )
+
+        # Alertas cruzados
+        _tem_alertas_disp = (
+            _alertas_disp is not None
+            and not _alertas_disp.get('contas_cruzadas', pd.DataFrame()).empty
+        )
+        with st.expander(
+            '⚠️ Alertas detectados' if _tem_alertas_disp else '✅ Alertas',
+            expanded=_tem_alertas_disp,
+        ):
+            if _alertas_disp:
+                exibir_alertas_dispositivos(_alertas_disp)
 

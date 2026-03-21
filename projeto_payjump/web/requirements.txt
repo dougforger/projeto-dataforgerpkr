@@ -12,3 +12,4 @@ streamlit-folium
 dataframe-image
 plotly
 matplotlib
+beautifulsoup4

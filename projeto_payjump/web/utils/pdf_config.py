@@ -73,6 +73,37 @@ def tem_cjk(texto: str) -> bool:
     """Retorna True se o texto contiver algum caractere CJK."""
     return bool(_RE_CJK.search(texto))
 
+
+# Fonte para símbolos de naipes (♠ ♥ ♦ ♣) — Segoe UI Symbol
+FONTE_NAIPES = 'SegoeUISymbol'
+pdfmetrics.registerFont(TTFont(FONTE_NAIPES, FONT_DIR / 'seguisym.ttf'))
+
+_NAIPES_VERMELHOS = frozenset('♥♦')
+_RE_NAIPES = re.compile(r'[♠♥♦♣]')
+
+
+def tem_naipes(texto: str) -> bool:
+    """Retorna True se o texto contiver algum símbolo de naipe."""
+    return bool(_RE_NAIPES.search(texto))
+
+
+def aplicar_fonte_naipes(texto: str) -> str:
+    """Envolve ♠♥♦♣ em tags <font> para SegoeUISymbol com cor adequada;
+    escapa o restante para XML (compatível com Paragraph do ReportLab)."""
+    partes = []
+    ultimo = 0
+    for m in _RE_NAIPES.finditer(texto):
+        if m.start() > ultimo:
+            partes.append(html.escape(texto[ultimo:m.start()]))
+        simbolo = m.group()
+        cor = '#CC0000' if simbolo in _NAIPES_VERMELHOS else '#1C1C1C'
+        partes.append(f'<font name="{FONTE_NAIPES}" color="{cor}">{simbolo}</font>')
+        ultimo = m.end()
+    if ultimo < len(texto):
+        partes.append(html.escape(texto[ultimo:]))
+    return ''.join(partes)
+
+
 # -----------------------------------------------------
 # PALETA DE CORES INSTITUCIONAL
 # Cor principal: #F0A64D (âmbar Suprema)
@@ -119,6 +150,31 @@ ESTILO_TABELA = TableStyle([
     ('RIGHTPADDING',    (0, 0), (-1, -1), 8),
     ('TOPPADDING',      (0, 0), (-1, -1), 6),
     ('BOTTOMPADDING',   (0, 0), (-1, -1), 6),
+    # ── Borda externa ──────────────────────────────────────────────
+    ('BOX',             (0, 0), (-1, -1), 0.75, COR_BORDA),
+])
+
+# Variante compacta — fontes e espaçamentos menores para tabelas densas (8+ colunas)
+ESTILO_TABELA_COMPACTO = TableStyle([
+    # ── Cabeçalho ──────────────────────────────────────────────────
+    ('FONTNAME',        (0, 0), (-1,  0), FONTE_NEGRITO),
+    ('FONTSIZE',        (0, 0), (-1,  0), 8),
+    ('BACKGROUND',      (0, 0), (-1,  0), COR_DESTAQUE),
+    ('TEXTCOLOR',       (0, 0), (-1,  0), COR_TEXTO),
+    ('LINEBELOW',       (0, 0), (-1,  0), 1.5, COR_DESTAQUE_ESCURO),
+    # ── Corpo ──────────────────────────────────────────────────────
+    ('FONTNAME',        (0, 1), (-1, -1), FONTE_NORMAL),
+    ('FONTSIZE',        (0, 1), (-1, -1), 8),
+    ('TEXTCOLOR',       (0, 1), (-1, -1), COR_TEXTO),
+    ('ROWBACKGROUNDS',  (0, 1), (-1, -1), [colors.white, COR_DESTAQUE_CLARO]),
+    ('LINEBELOW',       (0, 1), (-1, -2), 0.25, COR_BORDA),
+    # ── Layout ─────────────────────────────────────────────────────
+    ('ALIGN',           (0, 0), (-1, -1), 'LEFT'),
+    ('VALIGN',          (0, 0), (-1, -1), 'MIDDLE'),
+    ('LEFTPADDING',     (0, 0), (-1, -1), 6),
+    ('RIGHTPADDING',    (0, 0), (-1, -1), 6),
+    ('TOPPADDING',      (0, 0), (-1, -1), 4),
+    ('BOTTOMPADDING',   (0, 0), (-1, -1), 4),
     # ── Borda externa ──────────────────────────────────────────────
     ('BOX',             (0, 0), (-1, -1), 0.75, COR_BORDA),
 ])
@@ -182,6 +238,14 @@ ESTILO_CABECALHO_CELULA = ParagraphStyle(
     leading=13,
     textColor=COR_TEXTO,
     wordWrap='LTR',
+)
+
+# Variante sem quebra de linha — para cabeçalhos que não devem quebrar
+ESTILO_CABECALHO_CELULA_NOWRAP = ParagraphStyle(
+    'cabecalho_celula_nowrap',
+    parent=ESTILO_CABECALHO_CELULA,
+    wordWrap=None,
+    splitLongWords=0,
 )
 
 LOGO_DEITADO = ImageReader(BASE_DIR / 'img' / 'LOGO PRETO DEITADO.png')

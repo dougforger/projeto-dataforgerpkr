@@ -1,8 +1,8 @@
 # Doug Forger PKR — Sistema de Análise e Segurança
 
-![Versão](https://img.shields.io/badge/version-2.0-blue)
+![Versão](https://img.shields.io/badge/version-3.0-blue)
 
-Sistema de integridade e análise de dados para a plataforma Suprema Poker. Reúne ferramentas de detecção de conluio, ressarcimento de vítimas, análise geográfica e distribuição de premiação em torneios.
+Sistema de integridade e análise de dados para a plataforma Suprema Poker. Reúne ferramentas de detecção de conluio, ressarcimento de vítimas, análise geográfica, visualização de hand history e distribuição de premiação em torneios.
 
 ---
 
@@ -11,9 +11,13 @@ Sistema de integridade e análise de dados para a plataforma Suprema Poker. Reú
 ### Interface Web
 ```bash
 cd projeto_payjump/web
-pip install -r requirements.txt
-streamlit run início.py
+uv sync
+uv run streamlit run início.py
 ```
+
+> Streamlit Cloud ainda usa `requirements.txt` (mantido em paralelo).
+> Ao adicionar uma dependência: `uv add <pacote>` e depois
+> `uv export --no-hashes -o requirements.txt`.
 
 ### Ferramentas CLI
 
@@ -115,19 +119,46 @@ Cálculo e distribuição de ressarcimentos para vítimas de contas fraudulentas
 
 ---
 
-### 🌍 Geolocalização — `pages/5_🌍_Geolocalização.py`
+### 📝 Relatórios — `pages/5_📝_Relatórios.py`
 
-Análise geográfica independente de contas investigadas a partir de relatórios de IP e GPS exportados do backend.
+Relatórios geográficos e de dispositivos com três abas integradas.
 
+**Aba Consulta Manual (IP/GPS):**
+- Consulta de endereços IP ou coordenadas GPS sem upload de arquivo
+- Entrada por texto livre (um item por linha)
+- Resultado exibido em tabela com mapa interativo Folium
+
+**Aba Importar Planilhas (IP/GPS):**
 - Upload de IP Report XLSX e/ou GPS Report XLSX (detecção automática do tipo)
 - Geolocalização de IPs via ip-api.com em lotes de até 100 por requisição
 - Geocodificação reversa de coordenadas GPS via OpenStreetMap Nominatim
 - Cache por sessão para evitar requisições duplicadas
 - Marcadores coloridos por conta (paleta de até 10 cores)
-- Mapa interativo (Folium) com camadas: Ruas (OpenStreetMap) e Satélite (Esri)
-- Popups com nome do jogador, cidade, estado e país
+- Mapa interativo Folium com camadas Ruas e Satélite
+- Resumo deduplificado e tabela completa expansível
 - Detecção de alertas: múltiplos países, IPs compartilhados, múltiplas cidades, dispositivos compartilhados
-- Exportação de relatório em PDF landscape com mapa estático, tabela de alertas e tabelas resumo de IP e GPS
+- Exportação em PDF com tabelas de alertas e resumo geográfico
+
+**Aba Dispositivos:**
+- Upload de arquivos "Same Data With Players" exportados do backend (múltiplos arquivos)
+- Censura automática dos identificadores de dispositivo (UUID parcial)
+- Detecção de contas que aparecem em mais de um arquivo investigado
+- Exportação em PDF landscape com tabelas por investigação e alertas cruzados
+
+---
+
+### 🃏 Hand History Viewer — `pages/7_🃏_Hand_History.py`
+
+Visualizador de histórico de mãos exportado do backend, com filtros interativos e exportação em PDF.
+
+- Upload do arquivo HTML exportado pelo backend (múltiplas mãos por arquivo)
+- Seleção de "minhas contas" para revelar cartas e destacar mãos relevantes
+- Modos de exibição de cartas: revelar minhas contas / revelar todos / ocultar todos
+- Filtro para exibir apenas mãos com as contas selecionadas
+- Métricas por mão: pote total, rake, número de jogadores e rodadas
+- Resultado acumulado por conta ao longo de todas as mãos exibidas
+- Colorização por resultado (verde/vermelho) na tabela de resultado final
+- Exportação em PDF com índice navegável clicável e links de volta ao índice
 
 ---
 
@@ -142,14 +173,17 @@ projeto_payjump/
 │   │   ├── 2_📊_Payjump.py
 │   │   ├── 3_🔐_Gerador_de_Notificações.py
 │   │   ├── 4_💲_Ressarcimento.py
-│   │   └── 5_🌍_Geolocalização.py
+│   │   ├── 5_📝_Relatórios.py
+│   │   └── 7_🃏_Hand_History.py
 │   ├── utils/
 │   │   ├── analise_backend.py             # Análise via XLSX do backend
 │   │   ├── analise_snowflake.py           # Análise via CSV do Snowflake
-│   │   ├── analise_geo.py                 # Análise geográfica e geração de PDF geo
+│   │   ├── analise_geo.py                 # Análise geográfica e PDFs geo/dispositivos
 │   │   ├── geolocation.py                 # Integração ip-api.com e Nominatim
+│   │   ├── hand_history_parser.py         # Parser de HTML e geração de PDF do HH
+│   │   ├── mapa_utils.py                  # Mapa Folium interativo (Streamlit)
 │   │   ├── pdf_builder.py                 # Funções de construção de PDF (ReportLab)
-│   │   ├── pdf_config.py                  # Estilos e configurações de PDF
+│   │   ├── pdf_config.py                  # Estilos, fontes e configurações de PDF
 │   │   ├── calculos.py                    # Lógica de cálculo de ressarcimento
 │   │   ├── database.py                    # SQLAlchemy + SQLite
 │   │   └── arquivo_utils.py               # Leitura/correção de XLSX malformados
@@ -179,8 +213,10 @@ reverse_geocode/
 |---|---|---|
 | Backend — histórico de mãos | XLSX (múltiplos arquivos) | Análises (aba Backend) |
 | Backend — MTT Player List | XLSX | Payjump |
-| Backend — IP Report | XLSX | Geolocalização |
-| Backend — GPS Report | XLSX | Geolocalização |
+| Backend — IP Report | XLSX | Relatórios (aba Planilhas) |
+| Backend — GPS Report | XLSX | Relatórios (aba Planilhas) |
+| Backend — Same Data With Players | XLSX | Relatórios (aba Dispositivos) |
+| Backend — Hand History | HTML | Hand History Viewer |
 | Snowflake — mãos por conta | CSV | Análises (aba Snowflake), Ressarcimento |
 | `data/clubes.csv` | CSV estático | Análises, Payjump |
 | `data/ligas.csv` | CSV estático | Análises (Snowflake) |
@@ -202,8 +238,9 @@ reverse_geocode/
 - **Streamlit** — interface web
 - **Pandas** — processamento de dados
 - **ReportLab** — geração de PDFs
-- **Folium** — mapas interativos
+- **Folium / streamlit-folium** — mapas interativos
 - **staticmap** — mapas estáticos para PDF
+- **BeautifulSoup4** — parsing de HTML do hand history
 - **OpenPyXL** — manipulação de Excel
 - **SQLAlchemy + SQLite** — banco de dados de ressarcimentos
 - **Requests** — integração com APIs externas
@@ -214,6 +251,7 @@ reverse_geocode/
 
 - Todos os cálculos são auditáveis e transparentes
 - Dados permanecem sob controle do usuário (sem envio para servidores externos, exceto IPs para ip-api.com)
+- Identificadores de dispositivo são automaticamente censurados nos relatórios
 - Banco SQLite local para persistência de fraudadores e histórico de ressarcimentos
 
 ---

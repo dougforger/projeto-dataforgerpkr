@@ -9,8 +9,9 @@ from .pdf_config import (
     LOGO_DEITADO, styles,
     LARGURA_PAGINA, ALTURA_PAGINA,
     COR_BORDA, COR_DESTAQUE, COR_DESTAQUE_ESCURO, COR_TEXTO_SUAVE,
-    ESTILO_CELULA, ESTILO_CELULA_NOWRAP, ESTILO_TABELA, FONTE_NORMAL,
+    ESTILO_CELULA, ESTILO_CELULA_NOWRAP, ESTILO_TABELA, ESTILO_TABELA_COMPACTO, FONTE_NORMAL,
     aplicar_fonte_cjk, tem_cjk,
+    aplicar_fonte_naipes, tem_naipes,
 )
 
 # Margens do documento (consistentes com LARGURA_PAGINA = A4[0] - 4*cm)
@@ -133,21 +134,25 @@ def inicializar_pdf(protocolo: str, paisagem: bool = False, titulo_completo: str
 
 
 def _celula_com_fallback_cjk(valor):
-    """Se o valor for uma string com caracteres CJK, converte para Paragraph com fonte CJK."""
-    if isinstance(valor, str) and tem_cjk(valor):
-        return Paragraph(aplicar_fonte_cjk(valor), ESTILO_CELULA)
+    """Se o valor for uma string com naipes ou CJK, converte para Paragraph com a fonte adequada."""
+    if isinstance(valor, str):
+        if tem_naipes(valor):
+            return Paragraph(aplicar_fonte_naipes(valor), ESTILO_CELULA)
+        if tem_cjk(valor):
+            return Paragraph(aplicar_fonte_cjk(valor), ESTILO_CELULA)
     return valor
 
 
-def adicionar_tabela(story: list, linhas: list, larguras_colunas: list, espacamento: int = 12):
+def adicionar_tabela(story: list, linhas: list, larguras_colunas: list, espacamento: int = 12, estilo=None):
     """Cria Table com estilo padrão e adiciona ao story.
-    Aplica automaticamente fonte CJK (STSong-Light) em células com caracteres chineses/japoneses/coreanos."""
+    Aplica automaticamente fonte CJK (STSong-Light) em células com caracteres chineses/japoneses/coreanos.
+    Passe `estilo=ESTILO_TABELA_COMPACTO` para tabelas densas (8+ colunas)."""
     linhas_processadas = [
         [_celula_com_fallback_cjk(celula) for celula in linha]
         for linha in linhas
     ]
     tabela = Table(linhas_processadas, colWidths=larguras_colunas)
-    tabela.setStyle(ESTILO_TABELA)
+    tabela.setStyle(estilo if estilo is not None else ESTILO_TABELA)
     story.append(tabela)
     story.append(Spacer(1, espacamento))
 

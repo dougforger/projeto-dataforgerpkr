@@ -2,7 +2,7 @@ import pandas as pd
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import Paragraph, Spacer
 
-from .analise_geo import _encontrar_ids_compartilhados
+from .analise_geo import _encontrar_ids_compartilhados, gerar_elementos_mapa_pdf
 from .pdf_builder import (
     adicionar_alerta_compartilhamento,
     adicionar_tabela,
@@ -79,7 +79,7 @@ def resumo_por_jogador(df: pd.DataFrame) -> pd.DataFrame:
     )
     clube_por_jogador = (
         df.groupby('ID_JOGADOR')['NOME_CLUBE']
-        .agg(lambda x: x.mode()[0] if not x.empty else '')
+        .agg(lambda x: x.mode().iloc[0] if not x.empty and not x.mode().empty else '')
         .reset_index()
     )
     resumo = resumo.merge(clube_por_jogador, on='ID_JOGADOR', how='left')
@@ -271,6 +271,10 @@ def gerar_pdf_snowflake(
         msg_alerta='<b>⚠️ {n} IP(s) compartilhado(s) entre os jogadores.</b>',
         msg_ok='✅ Nenhum IP compartilhado.',
     )
+    _df_ip_mapa = df_ips.rename(columns={'ID_JOGADOR': 'JOGADOR_ID', 'NOME_JOGADOR': 'JOGADOR'})
+    story.append(Spacer(1, 8))
+    story.append(Paragraph('Mapa — Endereços IP', styles['Heading3']))
+    story.extend(gerar_elementos_mapa_pdf(_df_ip_mapa, largura_util, largura_img=1000, altura_img=500))
 
     # --------------------------------------------------
     # Geolocalização (GPS)
@@ -311,5 +315,13 @@ def gerar_pdf_snowflake(
             ))
         else:
             story.append(Paragraph('✅ Nenhuma localização em comum.', styles['Normal']))
+        _df_gps_mapa = (
+            df_geo[['ID_JOGADOR', 'NOME_JOGADOR', 'LATITUDE', 'LONGITUDE', 'CIDADE', 'ESTADO', 'PAIS']]
+            .drop_duplicates()
+            .rename(columns={'ID_JOGADOR': 'JOGADOR_ID', 'NOME_JOGADOR': 'JOGADOR'})
+        )
+        story.append(Spacer(1, 8))
+        story.append(Paragraph('Mapa — GPS', styles['Heading3']))
+        story.extend(gerar_elementos_mapa_pdf(_df_gps_mapa, largura_util, largura_img=1400, altura_img=600))
 
     return finalizar_pdf(buffer, doc, story)

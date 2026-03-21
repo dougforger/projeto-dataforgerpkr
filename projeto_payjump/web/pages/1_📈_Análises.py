@@ -14,6 +14,7 @@ from utils.analise_snowflake import (
     gerar_pdf_snowflake,
 )
 from utils.geolocation import buscar_localizacao_ips, buscar_geocodificacao_reversa
+from utils.mapa_utils import exibir_mapa_folium
 from utils.pdf_config import MULTIPLICADOR_MOEDA
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -414,6 +415,12 @@ with aba_snowflake:
                 st.warning(f'⚠️ {len(ips_compartilhados)} IP(s) compartilhado(s) entre os jogadores.')
             else:
                 st.success('✅ Nenhum IP compartilhado.')
+            if not df_ips_com_localizacao.empty:
+                with st.expander('🗺️ Mapa de IPs', expanded=True):
+                    exibir_mapa_folium(
+                        df_ips_com_localizacao.rename(columns={'ID_JOGADOR': 'JOGADOR_ID', 'NOME_JOGADOR': 'JOGADOR'}),
+                        key='ip_analise_sf',
+                    )
 
         with col3:
             st.subheader('Geolocalização')
@@ -456,6 +463,12 @@ with aba_snowflake:
                 st.warning(f'⚠️ Jogadores na mesma cidade: {", ".join(cidades_comuns)}')
             else:
                 st.success('✅ Nenhuma localização em comum.')
+            if not df_geo.empty:
+                with st.expander('🗺️ Mapa de GPS', expanded=True):
+                    exibir_mapa_folium(
+                        df_geo.rename(columns={'ID_JOGADOR': 'JOGADOR_ID', 'NOME_JOGADOR': 'JOGADOR'}),
+                        key='gps_analise_sf',
+                    )
 
         # --------------------------------------------------
         # Detalhamento por mesa

@@ -13,6 +13,7 @@ consultas de geolocalização por IP e GPS.
 '''
 
 import io
+import re
 
 import pandas as pd
 from reportlab.platypus import Image as RLImage, Paragraph, Spacer
@@ -25,6 +26,7 @@ from .pdf_builder import (
 )
 from .pdf_config import (
     ESTILO_CABECALHO_CELULA,
+    ESTILO_CABECALHO_CELULA_NOWRAP,
     ESTILO_CELULA,
     ESTILO_LEGENDA,
     styles,
@@ -51,7 +53,7 @@ PALETA_HEX = [
 # ESTILO_TABELA. Os aliases abaixo apontam para os estilos compartilhados
 # de pdf_config, garantindo consistência visual em todos os PDFs.
 _ESTILO_CELULA    = ESTILO_CELULA
-_ESTILO_CABECALHO = ESTILO_CABECALHO_CELULA
+_ESTILO_CABECALHO = ESTILO_CABECALHO_CELULA_NOWRAP
 
 
 # -----------------------------------------------------
@@ -355,6 +357,33 @@ def _legenda_pdf(df: pd.DataFrame) -> Paragraph:
     return Paragraph('&nbsp;&nbsp;&nbsp;'.join(partes), styles['Normal'])
 
 
+def gerar_elementos_mapa_pdf(
+    df: pd.DataFrame,
+    largura_util: float,
+    largura_img: int = 1000,
+    altura_img: int = 500,
+) -> list:
+    '''Gera lista de elementos ReportLab (imagem + legenda) para embutir em qualquer PDF.
+
+    Espera colunas: JOGADOR_ID, LATITUDE, LONGITUDE.
+    Retorna lista vazia se não houver coordenadas ou se staticmap não estiver instalado.
+    '''
+    df_mapa = df.dropna(subset=['LATITUDE', 'LONGITUDE'])
+    if df_mapa.empty or 'JOGADOR_ID' not in df_mapa.columns:
+        return []
+    cores_hex         = mapa_cores_hex_por_id(df_mapa['JOGADOR_ID'].tolist())
+    buffer_mapa, erro = _gerar_imagem_mapa(df_mapa, cores_hex, largura=largura_img, altura=altura_img)
+    if not buffer_mapa:
+        return [Paragraph(f'⚠ Mapa não disponível: {erro}', styles['Normal'])]
+    proporcao = altura_img / largura_img
+    return [
+        RLImage(buffer_mapa, width=largura_util, height=largura_util * proporcao),
+        Spacer(1, 6),
+        _legenda_pdf(df_mapa),
+        Spacer(1, 16),
+    ]
+
+
 def _montar_linhas(df: pd.DataFrame, colunas: list, cabecalhos: list) -> list:
     '''
     Monta linhas da tabela com word wrap em TODAS as células (cabeçalho e dados).
@@ -579,5 +608,248 @@ def gerar_pdf_geo(
 
     # Mapas sempre ao final do documento
     story.extend(story_mapas)
+
+    return finalizar_pdf(buffer, doc, story).read()
+
+
+# =====================================================================
+# DISPOSITIVOS — preparação, alertas e PDF
+# =====================================================================
+
+def censurar_codigo_dispositivo(codigo: str) -> str:
+    '''
+    Censura código de dispositivo preservando apenas o primeiro segmento UUID.
+
+    Para UUIDs padrão (XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX) mantém os
+    primeiros 8 caracteres e substitui o restante por ●, conferindo aparência
+    profissional ao relatório sem expor o identificador completo.
+    '''
+    if not isinstance(codigo, str) or not codigo.strip():
+        return '●●●●●●●●-●●●●-●●●●-●●●●-●●●●●●●●●●●●'
+    codigo = codigo.strip()
+    partes = codigo.split('-')
+    if len(partes) == 5:
+        sufixo = partes[4][-4:]
+        return f'{partes[0]}-●●●●-●●●●-●●●●-●●●●●●●●{sufixo}'
+    # Não-UUID: mostra primeiros 8 chars e censura o resto
+    sufixo = codigo[-4:] if len(codigo) > 12 else ''
+    return codigo[:min(8, len(codigo))] + '-●●●●-●●●●' + sufixo
+
+
+def _parsear_jogadores(texto: str) -> list[tuple[str, str]]:
+    '''Extrai pares (nome, id) do campo Players: "Nome(ID) / Nome2(ID2) / "'''
+    matches = re.findall(r'([^/(]+)\s*\((\d+)\)', str(texto))
+    return [(nome.strip(), id_) for nome, id_ in matches if nome.strip()]
+
+
+def _formatar_jogadores(jogadores: list[tuple[str, str]]) -> str:
+    return ', '.join(f'{nome} ({id_})' for nome, id_ in jogadores)
+
+
+def preparar_df_dispositivos(df_bruto: pd.DataFrame) -> pd.DataFrame:
+    '''
+    Normaliza colunas do arquivo "Same Data With Players" exportado do backend.
+
+    Valida colunas obrigatórias, parseia o campo Players em lista de contas,
+    censura o Machine Code e renomeia colunas para o padrão interno.
+
+    Raises:
+        ValueError: Se alguma coluna obrigatória estiver ausente.
+    '''
+    colunas_obrigatorias = {'Machine Code', 'Players'}
+    faltando = colunas_obrigatorias - set(df_bruto.columns)
+    if faltando:
+        raise ValueError(
+            f'Arquivo inválido para tipo Dispositivos. Colunas não encontradas: '
+            f'{", ".join(sorted(faltando))}. '
+            f'Verifique se o arquivo exportado é do tipo "Same Data With Players".'
+        )
+    df = df_bruto.copy()
+    df = df.drop(columns=[c for c in df.columns if str(c).startswith('Unnamed')], errors='ignore')
+
+    df['CODIGO_ORIGINAL']  = df['Machine Code'].astype(str)
+    df['CODIGO_CENSURADO'] = df['CODIGO_ORIGINAL'].apply(censurar_codigo_dispositivo)
+
+    df['_JOGADORES_LISTA'] = df['Players'].apply(_parsear_jogadores)
+    df['CONTAS']           = df['_JOGADORES_LISTA'].apply(_formatar_jogadores)
+    df['N_CONTAS']         = df['_JOGADORES_LISTA'].apply(len)
+    df = df.drop(columns=['_JOGADORES_LISTA'])
+
+    renomear = {
+        'OS Version':  'VERSAO_OS',
+        'Device':      'DISPOSITIVO',
+        'Model':       'MODELO',
+        'SysOS':       'SISTEMA',
+        'Repetitions': 'REPETICOES',
+        '模擬器':      'SIMULADOR',
+    }
+    df = df.rename(columns={k: v for k, v in renomear.items() if k in df.columns})
+
+    if 'SIMULADOR' in df.columns:
+        df['SIMULADOR'] = df['SIMULADOR'].map({'NO': 'Não', 'YES': 'Sim'}).fillna('—')
+
+    for col in ('DISPOSITIVO', 'MODELO', 'VERSAO_OS'):
+        if col in df.columns:
+            df[col] = df[col].fillna('—')
+
+    return df.drop_duplicates(subset=['CODIGO_ORIGINAL']).reset_index(drop=True)
+
+
+def _extrair_nome_id_de_contas(contas_str: str) -> list[tuple[str, str]]:
+    '''Parseia CONTAS formatado "Nome (ID), Nome2 (ID2)" → [(nome, id), ...].'''
+    pairs = re.findall(r'([^,]+?)\s*\((\d+)\)', str(contas_str))
+    return [(nome.strip(), id_) for nome, id_ in pairs if nome.strip()]
+
+
+def _inferir_id_investigacao(df: pd.DataFrame) -> str:
+    '''Retorna apenas o ID numérico da conta investigada (sem o nome).'''
+    m = re.search(r'\((\d+)\)', _inferir_titulo_investigacao(df))
+    return m.group(1) if m else ''
+
+
+def _inferir_titulo_investigacao(df: pd.DataFrame) -> str:
+    '''
+    Retorna "Nome (ID)" da conta presente em todos os dispositivos do arquivo.
+
+    Identifica o "dono" da investigação como o ID que aparece em 100% das linhas,
+    pois cada arquivo "Same Data With Players" é gerado para uma conta específica.
+    Retorna string vazia se nenhuma conta comum for encontrada (fallback no chamador).
+    '''
+    if df.empty or 'CONTAS' not in df.columns:
+        return ''
+    sets_ids = [
+        {id_ for _, id_ in _extrair_nome_id_de_contas(str(c))}
+        for c in df['CONTAS']
+    ]
+    ids_comuns = set.intersection(*sets_ids) if sets_ids else set()
+    if not ids_comuns:
+        return ''
+    id_dono = sorted(ids_comuns)[0]
+    for contas_str in df['CONTAS']:
+        for nome, id_ in _extrair_nome_id_de_contas(str(contas_str)):
+            if id_ == id_dono:
+                return f'{nome} ({id_})'
+    return ''
+
+
+def detectar_alertas_dispositivos(
+    lista_nome_df: list[tuple[str, pd.DataFrame]],
+) -> dict[str, pd.DataFrame]:
+    '''
+    Detecta contas que aparecem nos dispositivos de mais de um arquivo.
+
+    Cada arquivo representa a investigação de um ID específico. O alerta é
+    gerado quando uma conta está presente nas listas de dispositivos de dois
+    arquivos distintos — indicando conexão entre os investigados.
+
+    Args:
+        lista_nome_df: Lista de (nome_arquivo, df) retornados por preparar_df_dispositivos.
+
+    Returns:
+        dict com chave 'contas_cruzadas': DataFrame com CONTA e ARQUIVOS,
+        ou DataFrame vazio se nenhuma conta cruzada for encontrada.
+    '''
+    conta_para_arquivos: dict[str, set] = {}
+    conta_para_nome:     dict[str, str] = {}
+
+    for nome_arquivo, df in lista_nome_df:
+        for contas_str in df['CONTAS']:
+            for nome_conta, id_conta in _extrair_nome_id_de_contas(str(contas_str)):
+                conta_para_arquivos.setdefault(id_conta, set()).add(nome_arquivo)
+                conta_para_nome[id_conta] = nome_conta
+
+    cruzadas = [
+        {
+            'CONTA':    f'{conta_para_nome[id_]} ({id_})',
+            'ARQUIVOS': ', '.join(sorted(arqs)),
+        }
+        for id_, arqs in conta_para_arquivos.items()
+        if len(arqs) > 1
+    ]
+    df_c = (
+        pd.DataFrame(cruzadas)
+        if cruzadas
+        else pd.DataFrame(columns=['CONTA', 'ARQUIVOS'])
+    )
+    return {'contas_cruzadas': df_c}
+
+
+# Cabeçalhos para o PDF de dispositivos
+_HEADERS_DISP = {
+    'CODIGO_CENSURADO': 'Cód. Dispositivo',
+    'SISTEMA':          'Sistema',
+    'DISPOSITIVO':      'Tipo',
+    'MODELO':           'Modelo',
+    'VERSAO_OS':        'Versão OS',
+    'SIMULADOR':        'Emulador',
+    'REPETICOES':       'Repetições',
+    'N_CONTAS':         'Nº Contas',
+    'CONTAS':           'Contas',
+}
+
+
+def _secao_alertas_dispositivos(story: list, alertas: dict, largura_util: float) -> None:
+    '''Adiciona ao story a seção de alertas de contas cruzadas entre arquivos.'''
+    story.append(Paragraph('Alertas — Dispositivos em Comum', styles['Heading2']))
+
+    df_cruzadas = alertas.get('contas_cruzadas', pd.DataFrame())
+    if not df_cruzadas.empty:
+        story.append(_paragrafo_alerta(
+            f'{len(df_cruzadas)} conta(s) aparecem nos dispositivos de múltiplos arquivos investigados.'
+        ))
+        cabecalhos = ['Conta', 'Aparece nos arquivos']
+        dados = [
+            [str(row['CONTA']), str(row['ARQUIVOS'])]
+            for _, row in df_cruzadas.iterrows()
+        ]
+        df_temp  = pd.DataFrame(dados, columns=['CONTA', 'ARQUIVOS'])
+        larguras = calcular_larguras_proporcional(df_temp, list(df_temp.columns), cabecalhos, largura_util)
+        adicionar_tabela(story, _montar_linhas_alerta(cabecalhos, dados), larguras)
+    else:
+        story.append(_paragrafo_ok('Nenhum dispositivo em comum entre os jogadores investigados.'))
+
+
+def gerar_pdf_dispositivos(
+    titulo: str,
+    lista_nome_df: list[tuple[str, pd.DataFrame]],
+    alertas: dict,
+) -> bytes:
+    '''
+    Gera relatório PDF de dispositivos (landscape A4).
+
+    Estrutura:
+    - Uma seção por arquivo (subtítulo + tabela de dispositivos)
+    - Seção de alertas cruzados ao final
+
+    Args:
+        lista_nome_df: Lista de (nome_arquivo, df) processados por preparar_df_dispositivos.
+
+    Returns:
+        bytes do PDF pronto para download.
+    '''
+    buffer, doc, story = inicializar_pdf('', paisagem=True, titulo_completo=titulo)
+    largura_util = doc.width
+
+    story.append(Paragraph('Dispositivos', styles['Heading2']))
+
+    for i, (_, df) in enumerate(lista_nome_df):
+        titulo_secao = _inferir_titulo_investigacao(df) or f'Investigação {i + 1}'
+        story.append(Paragraph(titulo_secao, styles['Heading3']))
+        story.append(Paragraph(
+            'Relação de dispositivos identificados na investigação. '
+            'Os identificadores de dispositivo são parcialmente censurados para garantir '
+            'conformidade com os padrões de proteção de dados. '
+            'Cada linha representa um dispositivo único com as respectivas contas que o acessaram.',
+            ESTILO_LEGENDA,
+        ))
+        colunas    = [c for c in _HEADERS_DISP if c in df.columns]
+        cabecalhos = [_HEADERS_DISP[c] for c in colunas]
+        larguras   = calcular_larguras_proporcional(df, colunas, cabecalhos, largura_util)
+        linhas     = _montar_linhas(df, colunas, cabecalhos)
+        adicionar_tabela(story, linhas, larguras)
+        story.append(Spacer(1, 8))
+
+    story.append(Spacer(1, 8))
+    _secao_alertas_dispositivos(story, alertas, largura_util)
 
     return finalizar_pdf(buffer, doc, story).read()

@@ -18,6 +18,7 @@ dependencies = [
     "dataframe-image",
     "plotly",
     "matplotlib>=3.10.8",
+    "beautifulsoup4",
 ]
 
 [dependency-groups]
