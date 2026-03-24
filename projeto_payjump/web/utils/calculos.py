@@ -166,3 +166,150 @@ def criar_excel_ressarcimento(resultados_por_fraudador, ressarcimentos_imediatos
 
     output.seek(0)
     return output.getvalue()
+
+
+def processar_planilhas_backend(df) -> tuple:
+    '''
+    Processa DataFrame combinado de planilhas "Player chips transaction record" do backend.
+
+    Identifica as mãos onde TODAS as contas carregadas aparecem juntas e calcula:
+    1. Soma total por conta (consolidando todas as mesas em comum).
+    2. Totais por mesa (Association) para cada conta.
+    3. Registros individuais de cada mão em comum.
+
+    Args:
+        df (DataFrame): DataFrame combinado de múltiplos arquivos XLSX do backend.
+
+    Returns:
+        tuple: (soma_total, por_mesa, maos_comuns) — três DataFrames com os resultados.
+    '''
+    df = df[df['Event'] == 'gameResult'].copy()
+
+    # Extrair mesa (Game ID) e mão (Hand ID) do campo Association.
+    # Formato do backend: "Game ID: 42090762Hand ID: 954159535"
+    df['_mesa_id'] = pd.to_numeric(
+        df['Association'].astype(str).str.extract(r'Game ID:\s*(\d+)', expand=False),
+        errors='coerce',
+    )
+    df['_mao_id'] = pd.to_numeric(
+        df['Association'].astype(str).str.extract(r'Hand ID:\s*(\d+)', expand=False),
+        errors='coerce',
+    )
+    df = df.dropna(subset=['_mesa_id', '_mao_id'])
+
+    n_contas = df['Player ID'].nunique()
+    contagem = df.groupby('_mao_id')['Player ID'].nunique()
+    ids_comuns = contagem[contagem == n_contas].index
+    df_comuns = df[df['_mao_id'].isin(ids_comuns)].copy()
+
+    # 1. Soma total por conta (grand total)
+    soma_total = df_comuns.groupby(
+        ['Player ID', 'Player Name', 'Club Name']
+    ).agg(
+        chip_change=('chip change', 'sum'),
+        fee_change=('Total Fee change', 'sum'),
+        n_maos=('_mao_id', 'nunique')
+    ).reset_index()
+    soma_total.columns = ['ID Jogador', 'Nome', 'Clube', 'Ganhos', 'Rake', 'Mãos em Comum']
+
+    # 2. Totais por mesa para cada conta
+    por_mesa = df_comuns.groupby(
+        ['Player ID', 'Player Name', 'Club Name', '_mesa_id']
+    ).agg(
+        chip_change=('chip change', 'sum'),
+        fee_change=('Total Fee change', 'sum'),
+        n_maos=('_mao_id', 'nunique')
+    ).reset_index()
+    por_mesa.columns = ['ID Jogador', 'Nome', 'Clube', 'Mesa (Game ID)', 'Ganhos', 'Rake', 'Mãos em Comum']
+
+    # 3. Registros individuais de mãos em comum
+    maos_comuns = df_comuns[
+        ['Player ID', 'Player Name', 'Club Name', '_mesa_id', '_mao_id', 'chip change', 'Total Fee change']
+    ].sort_values(['_mao_id', 'Player ID']).copy()
+    maos_comuns.columns = ['ID Jogador', 'Nome', 'Clube', 'Mesa (Game ID)', 'Hand ID', 'Ganhos', 'Rake']
+
+    return soma_total, por_mesa, maos_comuns
+
+
+def gerar_pdf_pontual(protocolo: str, soma_total, por_mesa, maos_comuns) -> bytes:
+    '''
+    Gera PDF de apuração pontual com três seções: soma total, por mesa e mãos em comum.
+
+    Args:
+        protocolo (str): Número do protocolo (usado no título e no nome do arquivo).
+        soma_total (DataFrame): Totais por conta em todas as mesas em comum.
+        por_mesa (DataFrame): Totais por conta por mesa (Association).
+        maos_comuns (DataFrame): Registros individuais de mãos em comum.
+
+    Returns:
+        bytes: Conteúdo do PDF gerado.
+    '''
+    from reportlab.platypus import Paragraph
+    from utils.pdf_builder import (
+        inicializar_pdf, finalizar_pdf, adicionar_tabela,
+        calcular_larguras_proporcional,
+    )
+    from utils.pdf_config import (
+        ESTILO_LEGENDA, ESTILO_CELULA, ESTILO_CELULA_NOWRAP,
+        ESTILO_TABELA_COMPACTO, LARGURA_PAGINA,
+    )
+
+    def _linhas(df, nowrap_cols=None):
+        '''Converte DataFrame em lista de linhas para tabela ReportLab.'''
+        nowrap_cols = nowrap_cols or []
+        cab = list(df.columns)
+        rows = [cab]
+        for _, row in df.iterrows():
+            r = []
+            for col in cab:
+                v = row[col]
+                if isinstance(v, float):
+                    r.append(f'{v:,.2f}')
+                elif isinstance(v, int):
+                    r.append(str(v))
+                else:
+                    estilo = ESTILO_CELULA_NOWRAP if col in nowrap_cols else ESTILO_CELULA
+                    r.append(Paragraph(str(v) if v is not None else '—', estilo))
+            rows.append(r)
+        return rows
+
+    buffer, doc, story = inicializar_pdf(
+        protocolo, titulo_completo=f'Apuração #{protocolo}'
+    )
+
+    # ── Seção 1: Soma total ──────────────────────────────────────────────────
+    story.append(Paragraph(
+        'Resultado consolidado por conta ao longo de todas as mesas em comum.',
+        ESTILO_LEGENDA,
+    ))
+    cols1 = list(soma_total.columns)
+    larguras1 = calcular_larguras_proporcional(soma_total, cols1, cols1, LARGURA_PAGINA)
+    adicionar_tabela(story, _linhas(soma_total, nowrap_cols=['ID Jogador']), larguras1)
+
+    # ── Seção 2: Por mesa ────────────────────────────────────────────────────
+    for mesa_id in sorted(por_mesa['Mesa (Game ID)'].unique()):
+        df_mesa = por_mesa[por_mesa['Mesa (Game ID)'] == mesa_id].drop(columns=['Mesa (Game ID)']).copy()
+        story.append(Paragraph(
+            f'Mesa {mesa_id} — resultado por conta.',
+            ESTILO_LEGENDA,
+        ))
+        cols2 = list(df_mesa.columns)
+        larguras2 = calcular_larguras_proporcional(df_mesa, cols2, cols2, LARGURA_PAGINA)
+        adicionar_tabela(story, _linhas(df_mesa, nowrap_cols=['ID Jogador']), larguras2)
+
+    # ── Seção 3: Mãos em comum ───────────────────────────────────────────────
+    story.append(Paragraph(
+        'Todas as mãos jogadas em comum entre as contas investigadas.',
+        ESTILO_LEGENDA,
+    ))
+    cols3 = list(maos_comuns.columns)
+    larguras3 = calcular_larguras_proporcional(maos_comuns, cols3, cols3, LARGURA_PAGINA)
+    nowrap3 = ['ID Jogador', 'Mesa (Game ID)', 'Hand ID']
+    adicionar_tabela(
+        story,
+        _linhas(maos_comuns, nowrap_cols=nowrap3),
+        larguras3,
+        estilo=ESTILO_TABELA_COMPACTO,
+    )
+
+    return finalizar_pdf(buffer, doc, story).read()

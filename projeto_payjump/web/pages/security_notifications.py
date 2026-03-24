@@ -132,7 +132,7 @@ if template and template.get("fields"):
 
 st.markdown("---")
 
-if st.button("⚡ Gerar Notificação", type="primary", use_container_width=True):
+if st.button("⚡ Gerar Notificação", type="primary", width='stretch'):
 
     # Validação mínima
     missing = []
@@ -208,7 +208,7 @@ if "mensagem_gerada" in st.session_state and st.session_state["mensagem_gerada"]
             placeholder="5511999999999  (com DDI, sem + ou espaços)"
         )
 
-        if st.button("📲 Enviar via WhatsApp", disabled=True, use_container_width=True):
+        if st.button("📲 Enviar via WhatsApp", disabled=True, width='stretch'):
             # ── DESCOMENTE QUANDO TIVER O TOKEN ──────────────────────────
             # import os, requests
             # token    = os.environ["WA_TOKEN"]
@@ -230,6 +230,6 @@ if "mensagem_gerada" in st.session_state and st.session_state["mensagem_gerada"]
             pass
 
     st.markdown("")
-    if st.button("🔄 Nova Notificação", use_container_width=True):
+    if st.button("🔄 Nova Notificação", width='stretch'):
         del st.session_state["mensagem_gerada"]
         st.rerun()

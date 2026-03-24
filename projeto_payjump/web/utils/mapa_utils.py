@@ -61,7 +61,7 @@ def exibir_mapa_folium(df, key: str) -> None:
         ).add_to(m)
 
     folium.LayerControl().add_to(m)
-    st_folium(m, use_container_width=True, height=450, key=key, returned_objects=[])
+    st_folium(m, width='stretch', height=450, key=key, returned_objects=[])
     _exibir_legenda(df_mapa)
 
 

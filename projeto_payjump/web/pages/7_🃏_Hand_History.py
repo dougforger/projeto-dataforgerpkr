@@ -111,7 +111,7 @@ with st.sidebar:
         st.divider()
         st.subheader('Exportar')
 
-        if st.button('📄 Gerar PDF das mãos exibidas', use_container_width=True):
+        if st.button('📄 Gerar PDF das mãos exibidas', width='stretch'):
             game_id = maos_filtradas[0]['metadados'].get('game_id', 'HH')
             with st.spinner('Gerando PDF...'):
                 st.session_state.pdf_hh_bytes = gerar_pdf_hand_history(
@@ -128,7 +128,7 @@ with st.sidebar:
                 data=st.session_state.pdf_hh_bytes,
                 file_name=st.session_state.pdf_hh_nome,
                 mime='application/pdf',
-                use_container_width=True,
+                width='stretch',
                 type='primary',
             )
 
@@ -253,7 +253,7 @@ for mao in maos_filtradas:
                     'Fichas Rest.': acao['fichas_rest'],
                 })
             if linhas:
-                st.dataframe(pd.DataFrame(linhas), use_container_width=True, hide_index=True)
+                st.dataframe(pd.DataFrame(linhas), width='stretch', hide_index=True)
             if rodada['pote_final']:
                 st.caption(f"Pote: {_fmt_br(rodada['pote_final'])}")
 
@@ -292,6 +292,6 @@ for mao in maos_filtradas:
                         'Investido':   lambda x: _fmt_br(x),
                         'Ganho Bruto': lambda x: _fmt_br(x),
                     }),
-                    use_container_width=True,
+                    width='stretch',
                     hide_index=True,
                 )

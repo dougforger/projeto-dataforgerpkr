@@ -192,7 +192,7 @@ with col_conteudo:
                 plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
                 margin=dict(l=10, r=20, t=60, b=10),
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
         st.markdown('---')
         kpis_export = [
@@ -255,13 +255,13 @@ with col_conteudo:
         with col_res:
             df_res = df_drill[df_drill['Valor'] > 0][colunas_tabela].copy()
             st.subheader(f'Ressarcimentos — {fmt_brl(df_res["Valor"].sum())}')
-            st.dataframe(df_res, use_container_width=True, hide_index=True)
+            st.dataframe(df_res, width='stretch', hide_index=True)
 
         with col_mul:
             df_mul = df_drill[df_drill['Valor'] < 0][colunas_tabela].copy()
             df_mul['Valor'] = df_mul['Valor'].abs()
             st.subheader(f'Multas — {fmt_brl(df_mul["Valor"].sum())}')
-            st.dataframe(df_mul, use_container_width=True, hide_index=True)
+            st.dataframe(df_mul, width='stretch', hide_index=True)
 
         st.markdown('---')
 
@@ -384,7 +384,7 @@ with col_conteudo:
         )
 
         event = st.plotly_chart(
-            fig_drill, on_select='rerun', key='drill_chart', use_container_width=True,
+            fig_drill, on_select='rerun', key='drill_chart', width='stretch',
         )
 
         # ── Drill down / seleção ao clicar ────────────────────────────────────

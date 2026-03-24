@@ -70,7 +70,7 @@ def exibir_alertas_dispositivos(alertas: dict) -> None:
     )
     st.dataframe(
         df_cruzadas.rename(columns={'CONTA': 'Conta', 'ARQUIVOS': 'Aparece nos arquivos'}),
-        use_container_width=True, hide_index=True,
+        width='stretch', hide_index=True,
     )
 
 
@@ -86,12 +86,12 @@ def exibir_alertas(alertas: dict, tipo: str) -> None:
             st.error(f'🔴 **{len(df_paises)} jogador(es)** com registros em múltiplos países — Possível uso de VPN!')
             d = df_paises.copy()
             d['PAÍSES'] = d['PAÍSES'].apply(', '.join)
-            st.dataframe(d, use_container_width=True, hide_index=True)
+            st.dataframe(d, width='stretch', hide_index=True)
         if not df_ips.empty:
             st.error(f'🔴 **{len(df_ips)} IP(s)** compartilhado(s) entre jogadores distintos')
             d = df_ips.copy()
             d['JOGADORES'] = d['JOGADORES'].apply(', '.join)
-            st.dataframe(d, use_container_width=True, hide_index=True)
+            st.dataframe(d, width='stretch', hide_index=True)
     else:
         df_cidades = alertas.get('multiplas_cidades', pd.DataFrame())
         df_disp    = alertas.get('dispositivos_compartilhados', pd.DataFrame())
@@ -102,12 +102,12 @@ def exibir_alertas(alertas: dict, tipo: str) -> None:
             st.error(f'🔴 **{len(df_cidades)} jogador(es)** com registros em múltiplas cidades')
             d = df_cidades.copy()
             d['CIDADES'] = d['CIDADES'].apply(', '.join)
-            st.dataframe(d, use_container_width=True, hide_index=True)
+            st.dataframe(d, width='stretch', hide_index=True)
         if not df_disp.empty:
             st.error(f'🔴 **{len(df_disp)} dispositivo(s)** compartilhado(s) entre jogadores distintos')
             d = df_disp.copy()
             d['JOGADORES'] = d['JOGADORES'].apply(', '.join)
-            st.dataframe(d, use_container_width=True, hide_index=True)
+            st.dataframe(d, width='stretch', hide_index=True)
 
 
 # -----------------------------------------------------
@@ -192,7 +192,7 @@ with tab_manual:
         else:
             cols_exibir = [c for c in ('LATITUDE', 'LONGITUDE', 'CIDADE', 'ESTADO', 'PAIS')
                            if c in df_man.columns]
-        st.dataframe(df_man[cols_exibir], use_container_width=True, hide_index=True)
+        st.dataframe(df_man[cols_exibir], width='stretch', hide_index=True)
         exibir_mapa_folium(df_man, f'manual_{tipo_manual.lower()}')
 
 
@@ -231,7 +231,7 @@ with tab_planilha:
     col_proc, col_pdf = st.columns([1, 1])
     with col_proc:
         processar = st.button('⚙️ Processar', key='btn_processar', disabled=not arquivos,
-                              use_container_width=True)
+                              width='stretch')
 
     if processar and arquivos:
         with st.spinner('Carregando e corrigindo arquivos...'):
@@ -294,13 +294,13 @@ with tab_planilha:
                 file_name=_pdf_nome,
                 mime='application/pdf',
                 key='btn_baixar_pdf',
-                use_container_width=True,
+                width='stretch',
             )
             st.success('✅ Arquivo PDF pronto para download. Cliquei novamente para baixar.')
         else:
             # PDF ainda não gerado → botão de geração
             if st.button('📄 Gerar PDF', key='btn_gerar_pdf',
-                         disabled=_df_gen is None, use_container_width=True):
+                         disabled=_df_gen is None, width='stretch'):
                 _ids_lista = sorted(_df_gen['JOGADOR_ID'].dropna().unique().tolist())
                 _ids_str   = '_'.join(str(i) for i in _ids_lista)
                 _tipo_pdf  = 'ip' if _df_ip_gen is not None else 'gps'
@@ -331,11 +331,11 @@ with tab_planilha:
         # Resumo sem duplicatas (fora de expander, antes da tabela completa)
         df_resumo = resumo_ip(df_exibir) if tipo_resultado == 'ip' else resumo_gps(df_exibir)
         st.subheader('📊 Resumo')
-        st.dataframe(df_resumo, use_container_width=True, hide_index=True)
+        st.dataframe(df_resumo, width='stretch', hide_index=True)
 
         # Tabela completa
         with st.expander('📋 Tabela completa', expanded=False):
-            st.dataframe(df_exibir, use_container_width=True, hide_index=True)
+            st.dataframe(df_exibir, width='stretch', hide_index=True)
 
         # Mapa
         with st.expander('🗺️ Mapa', expanded=True):
@@ -381,7 +381,7 @@ with tab_dispositivos:
     with col_proc_disp:
         processar_disp = st.button(
             '⚙️ Processar', key='btn_processar_disp',
-            disabled=not arquivos_disp, use_container_width=True,
+            disabled=not arquivos_disp, width='stretch',
         )
 
     if processar_disp and arquivos_disp:
@@ -435,12 +435,12 @@ with tab_dispositivos:
                 file_name=_pdf_nome_disp,
                 mime='application/pdf',
                 key='btn_baixar_pdf_disp',
-                use_container_width=True,
+                width='stretch',
             )
             st.success('✅ Arquivo PDF pronto para download.')
         else:
             if st.button('📄 Gerar PDF', key='btn_gerar_pdf_disp',
-                         disabled=not _lista_disp, use_container_width=True):
+                         disabled=not _lista_disp, width='stretch'):
                 with st.spinner('Gerando PDF...'):
                     st.session_state.pdf_bytes_disp = gerar_pdf_dispositivos(
                         titulo='Relatório de Dispositivos',
@@ -477,7 +477,7 @@ with tab_dispositivos:
             cols_exibir = [c for c in _cols_resumo if c in df_arq.columns]
             st.dataframe(
                 df_arq[cols_exibir].rename(columns=_renomear_resumo),
-                use_container_width=True, hide_index=True,
+                width='stretch', hide_index=True,
             )
 
         # Alertas cruzados

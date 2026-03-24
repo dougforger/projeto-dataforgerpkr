@@ -284,7 +284,7 @@ with aba_backend:
     col_btn_relatorio, col_btn_pdf = st.columns(2)
 
     with col_btn_relatorio:
-        if st.button('📄 Gerar Relatório', use_container_width=True):
+        if st.button('📄 Gerar Relatório', width='stretch'):
             gerar_relatorio(mesas_selecionada_mtt, df_mesa_mtt_resumo, df_mesa_mtt)
 
     with col_btn_pdf:
@@ -304,7 +304,7 @@ with aba_backend:
                 data=pdf,
                 file_name=f'MESAS-{protocolo}.pdf',
                 mime='application/pdf',
-                use_container_width=True,
+                width='stretch',
             )
 
 
@@ -577,5 +577,5 @@ with aba_snowflake:
             data=pdf_sf,
             file_name=f'MESAS-{protocolo_sf}.pdf',
             mime='application/pdf',
-            use_container_width=True,
+            width='stretch',
         )
