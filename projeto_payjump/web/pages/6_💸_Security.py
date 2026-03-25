@@ -3,7 +3,19 @@ import pandas as pd
 import plotly.express as px
 import matplotlib.pyplot as plt
 from io import BytesIO
+from pathlib import Path
 from datetime import date, timedelta
+from matplotlib import font_manager
+from matplotlib.font_manager import FontProperties
+from matplotlib.patches import Rectangle
+
+_FONTS_DIR  = Path(__file__).parent.parent / 'fonts'
+_FONT_LIGHT = _FONTS_DIR / 'calibril.ttf'
+_FONT_BOLD  = _FONTS_DIR / 'calibrib.ttf'
+_IMG_DIR    = Path(__file__).parent.parent / 'img'
+_LOGO_PATH  = _IMG_DIR / 'LOGO PRETO DEITADO.png'
+font_manager.fontManager.addfont(str(_FONT_LIGHT))
+font_manager.fontManager.addfont(str(_FONT_BOLD))
 
 st.set_page_config(
     page_title='Security — Relatório',
@@ -41,41 +53,89 @@ def ultimo_domingo() -> date:
 
 
 def gerar_imagem_export(kpis: list, df_agg: pd.DataFrame, data_inicio: date, data_fim: date, ano_ref: int) -> bytes:
-    fig = plt.figure(figsize=(18, 8), facecolor='white')
+    # ── Paleta institucional (mesma do pdf_config.py) ──────────────────────────
+    COR_AMBER      = '#F0A64D'
+    COR_TEXT       = '#1C1C1C'
+    COR_TEXT_SUAVE = '#555555'
+    COR_BORDA      = '#DDDDDD'
 
-    titulo_imagem = f'Relatório Semanal - {data_inicio.strftime("%d/%m/%Y")} a {data_fim.strftime("%d/%m/%Y")}'
-    fig.text(0.5, 0.95, titulo_imagem, ha='center', va='top',
-             fontsize=22, fontweight='bold', color='#111111')
+    fp_l9  = FontProperties(fname=str(_FONT_LIGHT), size=9)
+    fp_l13 = FontProperties(fname=str(_FONT_LIGHT), size=13)
+    fp_l14 = FontProperties(fname=str(_FONT_LIGHT), size=14)
+    fp_l16 = FontProperties(fname=str(_FONT_LIGHT), size=16)
+    fp_b22 = FontProperties(fname=str(_FONT_BOLD),  size=22)
+    fp_b28 = FontProperties(fname=str(_FONT_BOLD),  size=28)
 
-    ax_kpi = fig.add_axes([0.02, 0.05, 0.32, 0.82])
+    fig = plt.figure(figsize=(18, 10), facecolor='white')
+
+    # ── Cabeçalho ─────────────────────────────────────────────────────────────
+    # Logo Security (canto superior esquerdo)
+    try:
+        logo_img = plt.imread(str(_LOGO_PATH))
+        ax_logo = fig.add_axes([0.03, 0.872, 0.085, 0.108])
+        ax_logo.imshow(logo_img)
+        ax_logo.axis('off')
+    except Exception:
+        pass
+
+    # Linha âmbar abaixo do logo
+    fig.add_artist(Rectangle(
+        (0.03, 0.858), 0.94, 0.001,
+        transform=fig.transFigure, color=COR_AMBER, clip_on=False, zorder=10,
+    ))
+
+    # Título do relatório — alinhado à esquerda, abaixo da linha âmbar
+    fig.text(
+        0.03, 0.840, 'Relatório Semanal',
+        ha='left', va='top', fontproperties=fp_b22, color=COR_TEXT,
+    )
+
+    # ── Métricas ──────────────────────────────────────────────────────────────
+    ax_kpi = fig.add_axes([0.03, 0.13, 0.30, 0.68])
     ax_kpi.axis('off')
-    posicoes_y = [0.78, 0.52, 0.27, 0.02]
-    for (label, valor), y in zip(kpis, posicoes_y):
-        ax_kpi.text(0, y + 0.12, label, fontsize=10, color='#666666',
-                    transform=ax_kpi.transAxes)
-        ax_kpi.text(0, y, valor, fontsize=22, fontweight='bold', color='#111111',
-                    transform=ax_kpi.transAxes)
+    for i, (label, valor) in enumerate(kpis):
+        y_base = 0.75 - i * 0.25
+        ax_kpi.text(0, y_base + 0.13, label, color=COR_TEXT_SUAVE,
+                    fontproperties=fp_l13, transform=ax_kpi.transAxes)
+        ax_kpi.text(0, y_base, valor, color=COR_TEXT,
+                    fontproperties=fp_b28, transform=ax_kpi.transAxes)
 
-    ax_bar = fig.add_axes([0.37, 0.10, 0.58, 0.73])
+    # ── Gráfico ───────────────────────────────────────────────────────────────
+    ax_bar = fig.add_axes([0.38, 0.16, 0.58, 0.65])
     bars = ax_bar.barh(df_agg['Mês Nome'], df_agg['Valor'], color='#1F77B4')
     ax_bar.invert_yaxis()
-    ax_bar.set_xlabel('Saldo', fontsize=11)
-    ax_bar.set_title(f'Saldo ao longo de {ano_ref}', fontsize=13, pad=12)
-    ax_bar.tick_params(axis='y', labelsize=11)
+    ax_bar.set_xlabel('Saldo', fontproperties=fp_l14, color=COR_TEXT_SUAVE)
+    ax_bar.set_title(f'Saldo ao longo de {ano_ref}', fontproperties=fp_l16, pad=12, color=COR_TEXT)
+    plt.setp(ax_bar.get_yticklabels(), fontproperties=fp_l14, color=COR_TEXT)
+    plt.setp(ax_bar.get_xticklabels(), fontproperties=fp_l13, color=COR_TEXT_SUAVE)
     max_val = df_agg['Valor'].max()
     ax_bar.set_xlim(0, max_val * 1.35)
     for bar, label in zip(bars, df_agg['Label']):
         ax_bar.text(
             bar.get_width() + max_val * 0.02,
             bar.get_y() + bar.get_height() / 2,
-            label, va='center', fontsize=10, color='#333333'
+            label, va='center', fontproperties=fp_l14, color=COR_TEXT,
         )
+    ax_bar.tick_params(colors=COR_TEXT_SUAVE)
     ax_bar.spines['top'].set_visible(False)
     ax_bar.spines['right'].set_visible(False)
+    ax_bar.spines['left'].set_color(COR_BORDA)
+    ax_bar.spines['bottom'].set_color(COR_BORDA)
     ax_bar.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x/1000:.0f} Mil"))
 
+    # ── Rodapé ────────────────────────────────────────────────────────────────
+    # Linha cinza claro
+    fig.add_artist(Rectangle(
+        (0.03, 0.092), 0.94, 0.001,
+        transform=fig.transFigure, color=COR_BORDA, clip_on=False, zorder=10,
+    ))
+    fig.text(0.03, 0.080, 'Site: securitypkr.com.br',
+             ha='left', va='top', fontproperties=fp_l9, color=COR_TEXT_SUAVE)
+    fig.text(0.03, 0.060, 'E-mail: security@suprema.group',
+             ha='left', va='top', fontproperties=fp_l9, color=COR_TEXT_SUAVE)
+
     buf = BytesIO()
-    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight', pad_inches=0.4)
+    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight', pad_inches=0.3)
     plt.close(fig)
     buf.seek(0)
     return buf.read()

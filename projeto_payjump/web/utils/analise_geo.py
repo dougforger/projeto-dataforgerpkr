@@ -736,42 +736,50 @@ def detectar_alertas_dispositivos(
     lista_nome_df: list[tuple[str, pd.DataFrame]],
 ) -> dict[str, pd.DataFrame]:
     '''
-    Detecta contas que aparecem nos dispositivos de mais de um arquivo.
+    Detecta dispositivos que aparecem em mais de um arquivo investigado.
 
     Cada arquivo representa a investigação de um ID específico. O alerta é
-    gerado quando uma conta está presente nas listas de dispositivos de dois
-    arquivos distintos — indicando conexão entre os investigados.
+    gerado quando o mesmo dispositivo (CODIGO_ORIGINAL) consta nos arquivos de
+    dois investigados distintos — indicando conexão entre eles.
 
     Args:
         lista_nome_df: Lista de (nome_arquivo, df) retornados por preparar_df_dispositivos.
 
     Returns:
-        dict com chave 'contas_cruzadas': DataFrame com CONTA e ARQUIVOS,
-        ou DataFrame vazio se nenhuma conta cruzada for encontrada.
+        dict com chave 'dispositivos_compartilhados': DataFrame com
+        CODIGO_CENSURADO, SISTEMA e CONTAS (todas as contas que acessaram o
+        dispositivo, mescladas de todos os arquivos), ou DataFrame vazio se
+        nenhum dispositivo compartilhado for encontrado.
     '''
-    conta_para_arquivos: dict[str, set] = {}
-    conta_para_nome:     dict[str, str] = {}
+    disp_arquivos: dict[str, dict[str, set]] = {}  # cod → {arq → {contas}}
+    disp_meta:     dict[str, dict]           = {}  # cod → {CODIGO_CENSURADO, SISTEMA}
 
     for nome_arquivo, df in lista_nome_df:
-        for contas_str in df['CONTAS']:
-            for nome_conta, id_conta in _extrair_nome_id_de_contas(str(contas_str)):
-                conta_para_arquivos.setdefault(id_conta, set()).add(nome_arquivo)
-                conta_para_nome[id_conta] = nome_conta
+        for _, row in df.iterrows():
+            cod = str(row.get('CODIGO_ORIGINAL', ''))
+            if not cod or cod == 'nan':
+                continue
+            disp_arquivos.setdefault(cod, {})
+            disp_meta.setdefault(cod, {
+                'CODIGO_CENSURADO': row.get('CODIGO_CENSURADO', cod),
+                'SISTEMA':          row.get('SISTEMA', ''),
+            })
+            disp_arquivos[cod].setdefault(nome_arquivo, set())
+            for nome_c, id_c in _extrair_nome_id_de_contas(str(row.get('CONTAS', ''))):
+                disp_arquivos[cod][nome_arquivo].add(f'{nome_c} ({id_c})')
 
-    cruzadas = [
+    rows = [
         {
-            'CONTA':    f'{conta_para_nome[id_]} ({id_})',
-            'ARQUIVOS': ', '.join(sorted(arqs)),
+            'CODIGO_CENSURADO': disp_meta[cod]['CODIGO_CENSURADO'],
+            'SISTEMA':          disp_meta[cod]['SISTEMA'],
+            'CONTAS':           ', '.join(sorted(set().union(*arq_contas.values()))),
         }
-        for id_, arqs in conta_para_arquivos.items()
-        if len(arqs) > 1
+        for cod, arq_contas in disp_arquivos.items()
+        if len(arq_contas) >= 2
     ]
-    df_c = (
-        pd.DataFrame(cruzadas)
-        if cruzadas
-        else pd.DataFrame(columns=['CONTA', 'ARQUIVOS'])
-    )
-    return {'contas_cruzadas': df_c}
+    cols   = ['CODIGO_CENSURADO', 'SISTEMA', 'CONTAS']
+    df_out = pd.DataFrame(rows) if rows else pd.DataFrame(columns=cols)
+    return {'dispositivos_compartilhados': df_out}
 
 
 # Cabeçalhos para o PDF de dispositivos
@@ -789,21 +797,22 @@ _HEADERS_DISP = {
 
 
 def _secao_alertas_dispositivos(story: list, alertas: dict, largura_util: float) -> None:
-    '''Adiciona ao story a seção de alertas de contas cruzadas entre arquivos.'''
+    '''Adiciona ao story a seção de alertas de dispositivos compartilhados entre arquivos.'''
     story.append(Paragraph('Alertas — Dispositivos em Comum', styles['Heading2']))
 
-    df_cruzadas = alertas.get('contas_cruzadas', pd.DataFrame())
-    if not df_cruzadas.empty:
+    df_disp = alertas.get('dispositivos_compartilhados', pd.DataFrame())
+    if not df_disp.empty:
         story.append(_paragrafo_alerta(
-            f'{len(df_cruzadas)} conta(s) aparecem nos dispositivos de múltiplos arquivos investigados.'
+            f'{len(df_disp)} dispositivo(s) em comum entre as investigações.'
         ))
-        cabecalhos = ['Conta', 'Aparece nos arquivos']
-        dados = [
-            [str(row['CONTA']), str(row['ARQUIVOS'])]
-            for _, row in df_cruzadas.iterrows()
+        cabecalhos = ['Dispositivo', 'Sistema', 'Contas']
+        colunas    = ['CODIGO_CENSURADO', 'SISTEMA', 'CONTAS']
+        dados      = [
+            [str(row['CODIGO_CENSURADO']), str(row['SISTEMA']), str(row['CONTAS'])]
+            for _, row in df_disp.iterrows()
         ]
-        df_temp  = pd.DataFrame(dados, columns=['CONTA', 'ARQUIVOS'])
-        larguras = calcular_larguras_proporcional(df_temp, list(df_temp.columns), cabecalhos, largura_util)
+        df_temp  = pd.DataFrame(dados, columns=colunas)
+        larguras = calcular_larguras_proporcional(df_temp, colunas, cabecalhos, largura_util)
         adicionar_tabela(story, _montar_linhas_alerta(cabecalhos, dados), larguras)
     else:
         story.append(_paragrafo_ok('Nenhum dispositivo em comum entre os jogadores investigados.'))

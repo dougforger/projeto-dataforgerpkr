@@ -60,17 +60,21 @@ def _detectar_tipo_dispositivo(df: pd.DataFrame) -> bool:
 
 
 def exibir_alertas_dispositivos(alertas: dict) -> None:
-    '''Exibe contas que aparecem nos dispositivos de mais de um arquivo investigado.'''
-    df_cruzadas = alertas.get('contas_cruzadas', pd.DataFrame())
-    if df_cruzadas.empty:
-        st.success('✅ Nenhuma conta em comum entre os arquivos investigados.')
+    '''Exibe dispositivos que aparecem em mais de um arquivo investigado.'''
+    df_disp = alertas.get('dispositivos_compartilhados', pd.DataFrame())
+    if df_disp.empty:
+        st.success('✅ Nenhum dispositivo em comum entre as contas investigadas.')
         return
     st.error(
-        f'🔴 **{len(df_cruzadas)} conta(s)** aparecem nos dispositivos de múltiplos arquivos'
+        f'🔴 **{len(df_disp)} dispositivo(s)** em comum entre as contas investigadas.'
     )
     st.dataframe(
-        df_cruzadas.rename(columns={'CONTA': 'Conta', 'ARQUIVOS': 'Aparece nos arquivos'}),
-        width='stretch', hide_index=True,
+        df_disp.rename(columns={
+            'CODIGO_CENSURADO': 'Dispositivo',
+            'SISTEMA':          'Sistema',
+            'CONTAS':           'Contas',
+        }),
+        use_container_width=True, hide_index=True,
     )
 
 
@@ -483,7 +487,7 @@ with tab_dispositivos:
         # Alertas cruzados
         _tem_alertas_disp = (
             _alertas_disp is not None
-            and not _alertas_disp.get('contas_cruzadas', pd.DataFrame()).empty
+            and not _alertas_disp.get('dispositivos_compartilhados', pd.DataFrame()).empty
         )
         with st.expander(
             '⚠️ Alertas detectados' if _tem_alertas_disp else '✅ Alertas',

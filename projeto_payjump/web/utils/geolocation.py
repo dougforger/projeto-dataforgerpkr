@@ -24,19 +24,36 @@ def buscar_localizacao_ips(df_ips: pd.DataFrame, cache_ips: dict) -> pd.DataFram
     for i in range(0, len(ips_novos), LOTE_IP_API):
         lote = ips_novos[i:i + LOTE_IP_API]
         try:
-            payload = [{'query': ip, 'fields': 'query,city,regionName,country,lat,lon'} for ip in lote]
-            resp    = requests.post(URL_IP_API, json=payload, timeout=TIMEOUT_IP_API)
+            payload = [{'query': ip, 'fields': 'status,message,query,city,regionName,country,lat,lon'}
+                       for ip in lote]
+            resp = requests.post(URL_IP_API, json=payload, timeout=TIMEOUT_IP_API)
+            resp.raise_for_status()  # levanta HTTPError para respostas 4xx/5xx
             for item in resp.json():
+                falhou = item.get('status') == 'fail'
                 cache_ips[item['query']] = {
-                    'CIDADE':    item.get('city'),
-                    'ESTADO':    item.get('regionName'),
-                    'PAIS':      item.get('country'),
-                    'LATITUDE':  item.get('lat'),
-                    'LONGITUDE': item.get('lon'),
+                    'CIDADE':    item.get('city')       if not falhou else None,
+                    'ESTADO':    item.get('regionName') if not falhou else None,
+                    'PAIS':      item.get('country')    if not falhou else None,
+                    'LATITUDE':  item.get('lat')        if not falhou else None,
+                    'LONGITUDE': item.get('lon')        if not falhou else None,
+                    '_motivo':   item.get('message'),   # ex: 'private range', 'reserved range'
                 }
-        except Exception:
+        except Exception as erro:
+            st.warning(f'⚠️ Falha ao buscar geolocalização de {len(lote)} IP(s): {erro}')
             for ip in lote:
-                cache_ips[ip] = {'CIDADE': None, 'ESTADO': None, 'PAIS': None, 'LATITUDE': None, 'LONGITUDE': None}
+                cache_ips[ip] = {'CIDADE': None, 'ESTADO': None, 'PAIS': None,
+                                 'LATITUDE': None, 'LONGITUDE': None, '_motivo': str(erro)}
+
+    # Aviso quando IPs sem geolocalização são retornados pela API (ex: IPs privados/reservados)
+    ips_sem_geo = [ip for ip in ips_unicos
+                   if cache_ips.get(ip, {}).get('CIDADE') is None
+                   and cache_ips.get(ip, {}).get('_motivo')]
+    if ips_sem_geo:
+        motivos = {cache_ips[ip].get('_motivo') for ip in ips_sem_geo}
+        st.info(
+            f'ℹ️ {len(ips_sem_geo)} IP(s) sem dados geográficos disponíveis '
+            f'({", ".join(m for m in motivos if m)}).',
+        )
 
     df_ips = df_ips.copy()
     df_ips['CIDADE']    = df_ips['IP'].map(lambda x: cache_ips.get(x, {}).get('CIDADE'))
