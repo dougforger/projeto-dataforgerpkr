@@ -263,6 +263,7 @@ with aba_backend:
                             data=gerar_imagem_df(
                                 df_torneio_display,
                                 formatar_colunas=['Prêmio', 'KO', 'Total'],
+                                titulo=f'Torneio {mesas_selecionada_mtt}',
                             ),
                             file_name=f'PREMIO-{mesas_selecionada_mtt}.png',
                             mime='image/png',
@@ -524,6 +525,7 @@ with aba_snowflake:
             data=gerar_imagem_df(
                 df_mesa_resumo_img,
                 formatar_colunas=['Ganhos (R$)', 'Rake (R$)'],
+                titulo=f'Mesa {mesa_selecionada}',
             ),
             file_name=f'mesa-{mesa_selecionada}.png',
             mime='image/png',
