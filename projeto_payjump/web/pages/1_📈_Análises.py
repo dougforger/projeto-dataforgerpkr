@@ -183,6 +183,13 @@ with aba_backend:
                     st.markdown('---')
                     st.subheader('Detalhamento por mesa')
                     mesa_selecionada_cash = st.selectbox('Selecione uma mesa', sorted(mesas_comuns_cash, reverse=True))
+                    _ids_cash = df_cash[df_cash['Game ID'] == mesa_selecionada_cash]['Player ID'].unique()
+                    _url_cash = (
+                        f'https://console.supremapoker.net/game/GameDetail'
+                        f'?backupOnly=0&dateFilter=16&matchID={mesa_selecionada_cash}'
+                        f'&page=1&pageSize=100&playerIDs={"&".join(str(p) for p in _ids_cash)}'
+                    )
+                    st.link_button('🔗 Acessar Hand History', _url_cash)
                     _df_mesa_cash_all = df_cash[df_cash['Game ID'] == mesa_selecionada_cash]
                     _maos_compartilhadas_cash = (
                         _df_mesa_cash_all.groupby('Hand ID')['Player ID']
@@ -230,6 +237,13 @@ with aba_backend:
                         st.markdown('---')
                         st.subheader('Detalhamento por Torneio')
                         mesas_selecionada_mtt = st.selectbox('Selecione um Torneio', sorted(torneios_comuns, reverse=True))
+                        _ids_mtt = df_mtt[df_mtt['Game ID'] == mesas_selecionada_mtt]['Player ID'].unique()
+                        _url_mtt = (
+                            f'https://console.supremapoker.net/game/GameDetail'
+                            f'?backupOnly=0&dateFilter=16&matchID={mesas_selecionada_mtt}'
+                            f'&page=1&pageSize=100&playerIDs={"&".join(str(p) for p in _ids_mtt)}'
+                        )
+                        st.link_button('🔗 Acessar Hand History', _url_mtt)
                         df_mesa_mtt_resumo, df_mesa_mtt = detalhar_torneio(st.session_state.df_backend, mesas_selecionada_mtt)
 
                         total_row = pd.DataFrame([{
@@ -478,6 +492,13 @@ with aba_snowflake:
         st.subheader('Detalhamento por mesa')
         mesas_ordenadas  = sorted(mesas_comuns_sf, reverse=True)
         mesa_selecionada = st.selectbox('Selecione uma mesa para mais detalhes.', mesas_ordenadas)
+        _ids_sf = df_sf[df_sf['ID_MESA'] == mesa_selecionada]['ID_JOGADOR'].unique()
+        _url_sf = (
+            f'https://console.supremapoker.net/game/GameDetail'
+            f'?backupOnly=0&dateFilter=16&matchID={mesa_selecionada}'
+            f'&page=1&pageSize=100&playerIDs={"&".join(str(p) for p in _ids_sf)}'
+        )
+        st.link_button('🔗 Acessar Hand History', _url_sf)
 
         # Apenas mãos onde mais de um jogador do dataset participou
         _df_mesa_all = df_sf[df_sf['ID_MESA'] == mesa_selecionada]
