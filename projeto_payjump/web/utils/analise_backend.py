@@ -121,6 +121,9 @@ def detalhar_torneio(df: pd.DataFrame, game_id):
 
     resumo_torneio          = df_prize.merge(df_ko, on=['Player ID', 'Player Name', 'Club Name'], how='left').fillna(0)
     resumo_torneio['Total'] = resumo_torneio['Prize'] + resumo_torneio["KO's"]
+    for _col in ('Player Name', 'Club Name'):
+        resumo_torneio[_col] = resumo_torneio[_col].astype(str)
+        df_torneio[_col]     = df_torneio[_col].astype(str)
     return resumo_torneio, df_torneio
 
 
