@@ -452,14 +452,63 @@ with aba_snowflake:
             if 'geo_cache' not in st.session_state:
                 st.session_state.geo_cache = {}
 
-            df_geo = buscar_geocodificacao_reversa(df_coords, st.session_state.geo_cache)
-            df_geo = df_geo.merge(
-                df_sf[['NOME_JOGADOR', 'ID_JOGADOR']].drop_duplicates(),
-                on='NOME_JOGADOR', how='left',
-            ).sort_values('ID_JOGADOR')
+            # ── Invalida resultado anterior se o arquivo mudou ────────────────
+            _coords_hash = hash(df_coords[['LATITUDE', 'LONGITUDE']].drop_duplicates().to_string())
+            if st.session_state.get('df_geo_sf_hash') != _coords_hash:
+                st.session_state.pop('df_geo_sf', None)
+                st.session_state.df_geo_sf_hash = _coords_hash
 
+            # ── Pré-análise sem chamada à API ─────────────────────────────────
+            _coords_unicas = df_coords[['LATITUDE', 'LONGITUDE']].drop_duplicates()
+            _coords_novas  = _coords_unicas[
+                ~_coords_unicas.apply(
+                    lambda r: (r['LATITUDE'], r['LONGITUDE']) in st.session_state.geo_cache,
+                    axis=1,
+                )
+            ]
+            _n_novas = len(_coords_novas)
+
+            # Detectar jogadores que já compartilham as mesmas coordenadas GPS
+            _jogs_por_coord = df_coords.groupby(['LATITUDE', 'LONGITUDE'])['NOME_JOGADOR'].nunique()
+            _coords_compartilhadas = _jogs_por_coord[_jogs_por_coord > 1]
+            if not _coords_compartilhadas.empty:
+                _detalhes_coords = []
+                for (lat, lon) in _coords_compartilhadas.index:
+                    _nomes = df_coords[
+                        (df_coords['LATITUDE'] == lat) & (df_coords['LONGITUDE'] == lon)
+                    ]['NOME_JOGADOR'].unique()
+                    _detalhes_coords.append(', '.join(_nomes))
+                st.warning(f'⚠️ Jogadores compartilham coordenadas GPS: {"; ".join(_detalhes_coords)}')
+
+            # ── Disparar processamento ou usar cache de sessão ─────────────────
+            df_geo = pd.DataFrame()
+
+            if _n_novas > 0:
+                st.info(f'📡 {_n_novas} coordenada(s) únicas serão consultadas na API de geolocalização.')
+                if st.button('📍 Processar coordenadas GPS', key='btn_processar_gps'):
+                    df_geo = buscar_geocodificacao_reversa(df_coords, st.session_state.geo_cache)
+                    df_geo = df_geo.merge(
+                        df_sf[['NOME_JOGADOR', 'ID_JOGADOR']].drop_duplicates(),
+                        on='NOME_JOGADOR', how='left',
+                    ).sort_values('ID_JOGADOR')
+                    st.session_state.df_geo_sf = df_geo
+                else:
+                    df_geo = st.session_state.get('df_geo_sf', pd.DataFrame())
+            else:
+                # Tudo em cache — nenhuma chamada externa necessária
+                df_geo = buscar_geocodificacao_reversa(df_coords, st.session_state.geo_cache)
+                df_geo = df_geo.merge(
+                    df_sf[['NOME_JOGADOR', 'ID_JOGADOR']].drop_duplicates(),
+                    on='NOME_JOGADOR', how='left',
+                ).sort_values('ID_JOGADOR')
+                st.session_state.df_geo_sf = df_geo
+
+            # ── Exibir resultado ──────────────────────────────────────────────
             if df_geo.empty:
-                st.info('Jogadores sem registro de localização por GPS.')
+                if _n_novas > 0:
+                    st.info('Clique em "Processar coordenadas GPS" para carregar as localizações.')
+                else:
+                    st.info('Jogadores sem registro de localização por GPS.')
             else:
                 df_geo_display = df_geo[['ID_JOGADOR', 'NOME_JOGADOR', 'CIDADE', 'ESTADO', 'PAIS']].drop_duplicates().copy()
                 df_geo_display['Jogador'] = df_geo_display['NOME_JOGADOR'] + ' (' + df_geo_display['ID_JOGADOR'].astype(str) + ')'
@@ -471,14 +520,12 @@ with aba_snowflake:
                     }),
                     hide_index=True, width='stretch',
                 )
-
-            cidades_comuns = df_geo.groupby('CIDADE')['NOME_JOGADOR'].nunique()
-            cidades_comuns = cidades_comuns[cidades_comuns > 1].index.tolist()
-            if cidades_comuns:
-                st.warning(f'⚠️ Jogadores na mesma cidade: {", ".join(cidades_comuns)}')
-            else:
-                st.success('✅ Nenhuma localização em comum.')
-            if not df_geo.empty:
+                cidades_comuns = df_geo.groupby('CIDADE')['NOME_JOGADOR'].nunique()
+                cidades_comuns = cidades_comuns[cidades_comuns > 1].index.tolist()
+                if cidades_comuns:
+                    st.warning(f'⚠️ Jogadores na mesma cidade: {", ".join(cidades_comuns)}')
+                else:
+                    st.success('✅ Nenhuma localização em comum.')
                 with st.expander('🗺️ Mapa de GPS', expanded=True):
                     exibir_mapa_folium(
                         df_geo.rename(columns={'ID_JOGADOR': 'JOGADOR_ID', 'NOME_JOGADOR': 'JOGADOR'}),
