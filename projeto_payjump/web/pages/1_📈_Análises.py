@@ -189,7 +189,9 @@ with aba_backend:
                         f'?backupOnly=0&dateFilter=16&matchID={mesa_selecionada_cash}'
                         f'&page=1&pageSize=100&playerIDs={"&".join(str(p) for p in _ids_cash)}'
                     )
-                    st.link_button('🔗 Acessar Hand History', _url_cash)
+                    _col_btn_cash, _col_code_cash = st.columns([2, 1])
+                    _col_btn_cash.link_button('🔗 Acessar Hand History', _url_cash)
+                    _col_code_cash.code(f'HH-{mesa_selecionada_cash}')
                     _df_mesa_cash_all = df_cash[df_cash['Game ID'] == mesa_selecionada_cash]
                     _maos_compartilhadas_cash = (
                         _df_mesa_cash_all.groupby('Hand ID')['Player ID']
@@ -243,7 +245,9 @@ with aba_backend:
                             f'?backupOnly=0&dateFilter=16&matchID={mesas_selecionada_mtt}'
                             f'&page=1&pageSize=100&playerIDs={"&".join(str(p) for p in _ids_mtt)}'
                         )
-                        st.link_button('🔗 Acessar Hand History', _url_mtt)
+                        _col_btn_mtt, _col_code_mtt = st.columns([2, 1])
+                        _col_btn_mtt.link_button('🔗 Acessar Hand History', _url_mtt)
+                        _col_code_mtt.code(f'HH-{mesas_selecionada_mtt}')
                         df_mesa_mtt_resumo, df_mesa_mtt = detalhar_torneio(st.session_state.df_backend, mesas_selecionada_mtt)
 
                         total_row = pd.DataFrame([{
@@ -545,7 +549,9 @@ with aba_snowflake:
             f'?backupOnly=0&dateFilter=16&matchID={mesa_selecionada}'
             f'&page=1&pageSize=100&playerIDs={"&".join(str(p) for p in _ids_sf)}'
         )
-        st.link_button('🔗 Acessar Hand History', _url_sf)
+        _col_btn_sf, _col_code_sf = st.columns([2, 1])
+        _col_btn_sf.link_button('🔗 Acessar Hand History', _url_sf)
+        _col_code_sf.code(f'HH-{mesa_selecionada}')
 
         # Apenas mãos onde mais de um jogador do dataset participou
         _df_mesa_all = df_sf[df_sf['ID_MESA'] == mesa_selecionada]
