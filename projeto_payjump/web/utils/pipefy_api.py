@@ -28,26 +28,3 @@ def testar_conexao() -> dict:
     return _post('{ me { id name email } }')['me']
 
 
-def buscar_opcoes_campos(pipe_id: int) -> dict:
-    """Retorna dict {field_id: [opcoes]} para campos select do start_form.
-
-    Campos de fase (PhaseField) não suportam inline fragments por tipo na API
-    do Pipefy, então apenas start_form_fields são consultados dinamicamente.
-    """
-    query = """
-    query($pipe_id: ID!) {
-      pipe(id: $pipe_id) {
-        start_form_fields {
-          id
-          ... on SelectField { options }
-        }
-      }
-    }
-    """
-    pipe = _post(query, {'pipe_id': pipe_id})['pipe']
-
-    opcoes = {}
-    for campo in pipe['start_form_fields']:
-        if 'options' in campo:
-            opcoes[campo['id']] = campo['options']
-    return opcoes

@@ -1,7 +1,7 @@
 import streamlit as st
 import datetime
 
-from utils.pipefy_api import testar_conexao, buscar_opcoes_campos, PIPE_ID
+from utils.pipefy_api import testar_conexao
 
 # -----------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA
@@ -34,13 +34,11 @@ with st.expander('🔧 Diagnóstico de conexão'):
                 st.error(f'Falha na conexão: {e}')
 
 # -----------------------------------------------------
-# OPÇÕES DINÂMICAS (cache de 1 hora)
+# CONSTANTES DOS FILTROS
 # -----------------------------------------------------
-@st.cache_data(ttl=3600)
-def carregar_opcoes():
-    return buscar_opcoes_campos(PIPE_ID)
-
-opcoes = carregar_opcoes()
+CATEGORIAS = ['Collusion', 'Software Ilegal (BOT)', 'Abuso de Chat', 'Chip Dumping', 'Aliciamento', 'Fraude']
+TIPOS = ['Investigação interna', 'Denúncia']
+RESULTADOS = ['Positivo', 'Negativo']
 
 # -----------------------------------------------------
 # LAYOUT
@@ -71,16 +69,13 @@ with col_filtros:
         st.stop()
 
     # -- Filtro de categoria ---------------------------------------------------
-    categorias = opcoes.get('categoria_category', [])
     categorias_selecionadas = st.multiselect(
         'Categoria:',
-        categorias,
-        default=categorias,
+        CATEGORIAS,
+        default=CATEGORIAS,
     )
 
     # -- Filtro de tipo de ocorrência ------------------------------------------
-    # PhaseField não suporta inline fragments na API; valores são estáveis
-    TIPOS = ['Investigação interna', 'Denúncia']
     tipos_selecionados = st.multiselect(
         'Tipo de ocorrência:',
         TIPOS,
@@ -88,7 +83,6 @@ with col_filtros:
     )
 
     # -- Filtro de resultado da análise ----------------------------------------
-    RESULTADOS = ['Positivo', 'Negativo']
     resultados_selecionados = st.multiselect(
         'Resultado da análise:',
         RESULTADOS,
