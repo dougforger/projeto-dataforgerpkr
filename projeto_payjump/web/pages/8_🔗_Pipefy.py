@@ -79,19 +79,20 @@ with col_filtros:
     )
 
     # -- Filtro de tipo de ocorrência ------------------------------------------
-    tipos = opcoes.get('tipo_de_ocorr_ncia', [])
+    # PhaseField não suporta inline fragments na API; valores são estáveis
+    TIPOS = ['Investigação interna', 'Denúncia']
     tipos_selecionados = st.multiselect(
         'Tipo de ocorrência:',
-        tipos,
-        default=tipos,
+        TIPOS,
+        default=TIPOS,
     )
 
     # -- Filtro de resultado da análise ----------------------------------------
-    resultados = opcoes.get('resultado_da_an_lise', [])
+    RESULTADOS = ['Positivo', 'Negativo']
     resultados_selecionados = st.multiselect(
         'Resultado da análise:',
-        resultados,
-        default=resultados,
+        RESULTADOS,
+        default=RESULTADOS,
     )
 
 with col_dashboard:

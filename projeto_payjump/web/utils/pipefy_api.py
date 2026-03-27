@@ -29,20 +29,17 @@ def testar_conexao() -> dict:
 
 
 def buscar_opcoes_campos(pipe_id: int) -> dict:
-    """Retorna dict {field_id: [opcoes]} para campos select/radio do pipe."""
+    """Retorna dict {field_id: [opcoes]} para campos select do start_form.
+
+    Campos de fase (PhaseField) não suportam inline fragments por tipo na API
+    do Pipefy, então apenas start_form_fields são consultados dinamicamente.
+    """
     query = """
     query($pipe_id: ID!) {
       pipe(id: $pipe_id) {
         start_form_fields {
           id
           ... on SelectField { options }
-        }
-        phases {
-          fields {
-            id
-            ... on RadioVerticalField { options }
-            ... on RadioHorizontalField { options }
-          }
         }
       }
     }
@@ -53,8 +50,4 @@ def buscar_opcoes_campos(pipe_id: int) -> dict:
     for campo in pipe['start_form_fields']:
         if 'options' in campo:
             opcoes[campo['id']] = campo['options']
-    for fase in pipe['phases']:
-        for campo in fase['fields']:
-            if 'options' in campo:
-                opcoes[campo['id']] = campo['options']
     return opcoes
