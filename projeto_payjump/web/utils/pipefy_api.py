@@ -1,3 +1,5 @@
+import time
+
 import pandas as pd
 import requests
 
@@ -15,7 +17,7 @@ def _post(query: str, variables: dict | None = None) -> dict:
     payload = {'query': query}
     if variables:
         payload['variables'] = variables
-    r = requests.post(PIPEFY_API_URL, json=payload, headers=_HEADERS, timeout=15)
+    r = requests.post(PIPEFY_API_URL, json=payload, headers=_HEADERS, timeout=60)
     r.raise_for_status()
     dados = r.json()
     if 'errors' in dados:
@@ -58,10 +60,20 @@ def buscar_todos_os_cards(pipe_id: int = PIPE_ID) -> pd.DataFrame:
       }
     }
     """
+    _MAX_TENTATIVAS = 3
+
     registros = []
     cursor = None
     while True:
-        dados = _post(query, {'pipe_id': str(pipe_id), 'cursor': cursor})
+        for tentativa in range(_MAX_TENTATIVAS):
+            try:
+                dados = _post(query, {'pipe_id': str(pipe_id), 'cursor': cursor})
+                break
+            except Exception:
+                if tentativa < _MAX_TENTATIVAS - 1:
+                    time.sleep(2 * (tentativa + 1))
+                else:
+                    raise
         pagina = dados['cards']
         for edge in pagina['edges']:
             no = edge['node']
