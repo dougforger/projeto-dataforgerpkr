@@ -54,7 +54,16 @@ def testar_conexao() -> dict:
     return _post('{ me { id name email } }')['me']
 
 
-def buscar_todos_os_cards(pipe_id: int = PIPE_ID) -> pd.DataFrame:
+def buscar_contagem_cards(pipe_id: int = PIPE_ID) -> int:
+    """Retorna o total de cards no pipe (usado para a barra de progresso)."""
+    dados = _post(
+        'query($id: ID!) { pipe(id: $id) { cards_count } }',
+        {'id': str(pipe_id)},
+    )
+    return dados['pipe']['cards_count']
+
+
+def buscar_todos_os_cards(pipe_id: int = PIPE_ID, on_progress=None) -> pd.DataFrame:
     """Busca todos os cards do pipe via paginação cursor-based.
 
     Returns:
@@ -113,6 +122,8 @@ def buscar_todos_os_cards(pipe_id: int = PIPE_ID) -> pd.DataFrame:
                 'resultado': campos.get('status_final') or None,
                 'analista': _parse_analista(campos.get('respons_vel_pela_an_lise')),
             })
+        if on_progress:
+            on_progress(len(registros))
         if not pagina['pageInfo']['hasNextPage']:
             break
         cursor = pagina['pageInfo']['endCursor']
