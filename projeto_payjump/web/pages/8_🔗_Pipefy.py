@@ -189,6 +189,10 @@ with col_dashboard:
     fig_cat, ax_cat = plt.subplots(figsize=(12, max(3, len(cats) * 0.65)))
     ax_cat.barh(cats, neg_vals, color='#95A5A6', label='Negativos')
     ax_cat.barh(cats, pos_vals, left=neg_vals, color='#F0A64D', label='Positivos')
+    grand_total_cat = sum(neg_vals) + sum(pos_vals)
+    max_x_cat = max((n + p) for n, p in zip(neg_vals, pos_vals)) if cats else 1
+    ax_cat.set_xlim(0, max_x_cat * 1.40)
+
     for i, (neg, pos) in enumerate(zip(neg_vals, pos_vals)):
         if neg > 0:
             ax_cat.text(neg / 2, i, str(neg), ha='center', va='center',
@@ -196,6 +200,12 @@ with col_dashboard:
         if pos > 0:
             ax_cat.text(neg + pos / 2, i, str(pos), ha='center', va='center',
                         color='white', fontsize=9, fontweight='bold')
+        # label externo: total + %
+        total_bar = neg + pos
+        pct_bar = total_bar / grand_total_cat * 100 if grand_total_cat else 0
+        ax_cat.text(total_bar + max_x_cat * 0.03, i, f'{total_bar:,} ({pct_bar:.1f}%)',
+                    va='center', fontsize=9)
+
     ax_cat.set_title('Quantidade por Categoria', fontsize=13, fontweight='bold', loc='left', pad=12)
     ax_cat.legend(loc='lower right', frameon=False)
     ax_cat.set_xlabel('Quantidade')
@@ -204,6 +214,15 @@ with col_dashboard:
     fig_cat.tight_layout()
     st.pyplot(fig_cat, use_container_width=True)
     plt.close(fig_cat)
+
+    # Tabela resumo de categorias
+    df_cat_tabela = cat_res[['Negativo', 'Positivo', 'Total']].copy()
+    df_cat_tabela['%'] = (df_cat_tabela['Total'] / grand_total_cat * 100).round(1).map('{:.1f}%'.format)
+    df_cat_tabela = df_cat_tabela.sort_values('Total', ascending=False)
+    df_cat_tabela.index.name = 'Categoria'
+    df_cat_tabela = df_cat_tabela.rename(columns={'Negativo': 'Negativos', 'Positivo': 'Positivos'})
+    df_cat_tabela = df_cat_tabela.reset_index()
+    st.dataframe(df_cat_tabela, use_container_width=True, hide_index=True)
 
     # -- Gráfico 3: Por Analista -------------------------------------------------
     analista_counts = df['analista'].dropna().value_counts().reset_index()

@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 from reportlab.lib.units import cm
-from reportlab.platypus import Image as RLImage, Paragraph, Spacer
+from reportlab.platypus import Image as RLImage, PageBreak, Paragraph, Spacer, Table
 
 from .pdf_builder import adicionar_tabela, finalizar_pdf, inicializar_pdf
 from .pdf_config import (
@@ -102,6 +102,10 @@ def _grafico_categoria(df: pd.DataFrame, largura: float) -> list:
     ax.barh(cats, neg_vals, color=_COR_NEGATIVO, label='Negativos')
     ax.barh(cats, pos_vals, left=neg_vals, color=_COR_POSITIVO, label='Positivos')
 
+    grand_total = sum(neg_vals) + sum(pos_vals)
+    max_x = max((n + p) for n, p in zip(neg_vals, pos_vals)) if cats else 1
+    ax.set_xlim(0, max_x * 1.40)
+
     for i, (neg, pos) in enumerate(zip(neg_vals, pos_vals)):
         if neg > 0:
             ax.text(neg / 2, i, str(neg), ha='center', va='center',
@@ -109,6 +113,11 @@ def _grafico_categoria(df: pd.DataFrame, largura: float) -> list:
         if pos > 0:
             ax.text(neg + pos / 2, i, str(pos), ha='center', va='center',
                     color='white', fontsize=8, fontweight='bold')
+        # label externo: total + %
+        total_bar = neg + pos
+        pct = total_bar / grand_total * 100 if grand_total else 0
+        ax.text(total_bar + max_x * 0.03, i, f'{total_bar:,} ({pct:.1f}%)',
+                va='center', fontsize=8)
 
     ax.legend(loc='lower right', fontsize=8, frameon=False)
     ax.set_xlabel('Quantidade', fontsize=9)
@@ -117,6 +126,40 @@ def _grafico_categoria(df: pd.DataFrame, largura: float) -> list:
     fig.tight_layout()
 
     return [_fig_para_rl_image(fig, largura), Spacer(1, 10)]
+
+
+def _tabela_categoria_pdf(df: pd.DataFrame, largura: float) -> list:
+    """Tabela ReportLab: Categoria | Negativos | Positivos | Total | %"""
+    cat_res = df.groupby('categoria')['resultado'].value_counts().unstack(fill_value=0)
+    for col in ['Positivo', 'Negativo']:
+        if col not in cat_res.columns:
+            cat_res[col] = 0
+    cat_res['Total'] = cat_res['Positivo'] + cat_res['Negativo']
+    grand = cat_res['Total'].sum()
+    cat_res['%'] = (cat_res['Total'] / grand * 100).round(1)
+    cat_res = cat_res.sort_values('Total', ascending=False)
+
+    cabecalho = ['Categoria', 'Negativos', 'Positivos', 'Total', '%']
+    linhas = [cabecalho]
+    for cat, row in cat_res.iterrows():
+        linhas.append([
+            str(cat),
+            str(int(row['Negativo'])),
+            str(int(row['Positivo'])),
+            str(int(row['Total'])),
+            f"{row['%']:.1f}%",
+        ])
+
+    col_widths = [
+        largura * 0.40,
+        largura * 0.15,
+        largura * 0.15,
+        largura * 0.15,
+        largura * 0.15,
+    ]
+    tabela = Table(linhas, colWidths=col_widths)
+    tabela.setStyle(ESTILO_TABELA)
+    return [tabela, Spacer(1, 10)]
 
 
 def _grafico_analista(df: pd.DataFrame, largura: float) -> list:
@@ -224,12 +267,14 @@ def gerar_pdf_dashboard(df: pd.DataFrame, filtros: dict) -> bytes:
     story.append(Spacer(1, 16))
 
     # -- Gráfico: Categoria -----------------------------------------------------
+    story.append(PageBreak())
     story.append(Paragraph('Quantidade por Categoria', styles['h2']))
     story.append(Paragraph(
         'Distribuição dos protocolos por categoria de infração analisada, ordenada por volume.',
         ESTILO_LEGENDA,
     ))
     story.extend(_grafico_categoria(df, LARGURA_PAGINA))
+    story.extend(_tabela_categoria_pdf(df, LARGURA_PAGINA))
     story.append(Spacer(1, 16))
 
     # -- Gráfico: Analista ------------------------------------------------------
