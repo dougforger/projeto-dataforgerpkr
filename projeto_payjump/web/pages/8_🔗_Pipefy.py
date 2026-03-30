@@ -1,7 +1,7 @@
 import datetime
 
-import plotly.graph_objects as go
-import plotly.express as px
+import matplotlib.pyplot as plt
+import seaborn as sns
 import streamlit as st
 
 from utils.pipefy_api import buscar_todos_os_cards, testar_conexao
@@ -126,6 +126,11 @@ with col_dashboard:
         st.warning(f'Nenhum protocolo encontrado. {len(df_total):,} cards carregados no total — verifique os filtros.')
         st.stop()
 
+    with st.expander('👀 Visualização dos dados', expanded = False):
+        st.dataframe(
+            df
+        )
+
     # -- Métricas ----------------------------------------------------------------
     total = len(df)
     n_pos = (df['resultado'] == 'Positivo').sum()
@@ -139,101 +144,74 @@ with col_dashboard:
     st.markdown('#### 📊 Dashboard')
     m1, m2, m3 = st.columns(3)
     m1.metric('Total de Protocolos', f'{total:,}')
-    m2.metric('Positivos vs Total', f'{n_pos:,}', f'{pct_pos:.1f}%', delta_color='off')
-    m3.metric('Internos vs Positivos', f'{n_internos_pos:,}', f'{pct_int:.1f}%', delta_color='off')
+    m2.metric('Positivos vs Total', f'{n_pos:,}', f'{pct_pos:.1f}%', delta_color='off', delta_arrow='off')
+    m3.metric('Internos vs Positivos', f'{n_internos_pos:,}', f'{pct_int:.1f}%', delta_color='off', delta_arrow='off')
 
     st.markdown('---')
+
+    sns.set_theme(style='whitegrid', font_scale=1.05)
 
     # -- Gráfico 1: Negativo × Positivo ------------------------------------------
     pct_neg = n_neg / total * 100 if total else 0
 
-    fig_resultado = go.Figure()
-    fig_resultado.add_trace(go.Bar(
-        name=f'Negativos ({n_neg:,})',
-        y=['Resultado'],
-        x=[pct_neg],
-        orientation='h',
-        marker_color='#C0392B',
-        text=f'{pct_neg:.1f}%',
-        textposition='inside',
-        insidetextanchor='middle',
-        textfont=dict(color='white', size=14),
-    ))
-    fig_resultado.add_trace(go.Bar(
-        name=f'Positivos ({n_pos:,})',
-        y=['Resultado'],
-        x=[pct_pos],
-        orientation='h',
-        marker_color='#27AE60',
-        text=f'{pct_pos:.1f}%',
-        textposition='inside',
-        insidetextanchor='middle',
-        textfont=dict(color='white', size=14),
-    ))
-    fig_resultado.update_layout(
-        barmode='stack',
-        height=100,
-        margin=dict(l=0, r=0, t=0, b=0),
-        xaxis=dict(range=[0, 100], tickformat='.0f', ticksuffix='%', showgrid=False),
-        yaxis=dict(showticklabels=False),
-        legend=dict(orientation='h', yanchor='bottom', y=1.05, xanchor='right', x=1),
-        plot_bgcolor='white',
-    )
-    st.plotly_chart(fig_resultado, use_container_width=True)
+    fig_res, ax_res = plt.subplots(figsize=(12, 2))
+    ax_res.barh([''], [pct_neg], color='#95A5A6', label=f'Negativos  ({n_neg:,})')
+    ax_res.barh([''], [pct_pos], left=[pct_neg], color='#F0A64D', label=f'Positivos  ({n_pos:,})')
+    if pct_neg > 5:
+        ax_res.text(pct_neg / 2, 0, f'{pct_neg:.1f}%',
+                    ha='center', va='center', color='white', fontsize=13, fontweight='bold')
+    if pct_pos > 5:
+        ax_res.text(pct_neg + pct_pos / 2, 0, f'{pct_pos:.1f}%',
+                    ha='center', va='center', color='white', fontsize=13, fontweight='bold')
+    ax_res.set_xlim(0, 100)
+    ax_res.set_xlabel('%')
+    ax_res.set_yticklabels([])
+    ax_res.tick_params(left=False)
+    ax_res.set_title('Resultado das Análises', fontsize=13, fontweight='bold', loc='left', pad=12)
+    ax_res.legend(loc='lower center', bbox_to_anchor=(0.5, 1.08), ncol=2, frameon=False)
+    ax_res.spines[['top', 'right', 'left']].set_visible(False)
+    fig_res.tight_layout()
+    st.pyplot(fig_res, use_container_width=True)
+    plt.close(fig_res)
 
-    # -- Gráficos 2 e 3 lado a lado ---------------------------------------------
-    g_col1, g_col2 = st.columns(2)
+    # -- Gráfico 2: Por Categoria ------------------------------------------------
+    cat_counts = df['categoria'].value_counts().reset_index()
+    cat_counts.columns = ['Categoria', 'Quantidade']
+    cat_counts['%'] = (cat_counts['Quantidade'] / total * 100).round(1)
+    cat_counts = cat_counts.sort_values('Quantidade', ascending=True)
 
-    # Gráfico 2: Por Categoria
-    with g_col1:
-        cat_counts = df['categoria'].value_counts().reset_index()
-        cat_counts.columns = ['Categoria', 'Quantidade']
-        cat_counts['%'] = (cat_counts['Quantidade'] / total * 100).round(1)
-        cat_counts = cat_counts.sort_values('Quantidade', ascending=True)
+    fig_cat, ax_cat = plt.subplots(figsize=(12, max(3, len(cat_counts) * 0.55)))
+    sns.barplot(data=cat_counts, y='Categoria', x='%', ax=ax_cat, color='#2980B9')
+    for bar, (_, row) in zip(ax_cat.patches, cat_counts.iterrows()):
+        ax_cat.text(bar.get_width() + 0.4, bar.get_y() + bar.get_height() / 2,
+                    f'{row["%"]:.1f}%  ({row["Quantidade"]:,})', va='center', fontsize=10)
+    ax_cat.set_xlim(0, cat_counts['%'].max() * 1.25)
+    ax_cat.set_title('Quantidade por Categoria', fontsize=13, fontweight='bold', loc='left', pad=12)
+    ax_cat.set_xlabel('%')
+    ax_cat.set_ylabel('')
+    ax_cat.spines[['top', 'right']].set_visible(False)
+    fig_cat.tight_layout()
+    st.pyplot(fig_cat, use_container_width=True)
+    plt.close(fig_cat)
 
-        fig_cat = px.bar(
-            cat_counts,
-            y='Categoria',
-            x='%',
-            orientation='h',
-            text=cat_counts['%'].map(lambda x: f'{x:.1f}%'),
-            color_discrete_sequence=['#2980B9'],
-            title='Quantidade por Categoria',
-        )
-        fig_cat.update_traces(textposition='outside')
-        fig_cat.update_layout(
-            margin=dict(l=0, r=40, t=40, b=0),
-            xaxis_title='%',
-            yaxis_title='',
-            plot_bgcolor='white',
-            showlegend=False,
-        )
-        st.plotly_chart(fig_cat, use_container_width=True)
+    # -- Gráfico 3: Por Analista -------------------------------------------------
+    analista_counts = df['analista'].dropna().value_counts().reset_index()
+    analista_counts.columns = ['Analista', 'Quantidade']
+    analista_counts = analista_counts.sort_values('Quantidade', ascending=True)
 
-    # Gráfico 3: Por Analista
-    with g_col2:
-        analista_counts = df['analista'].dropna().value_counts().reset_index()
-        analista_counts.columns = ['Analista', 'Quantidade']
-        analista_counts = analista_counts.sort_values('Quantidade', ascending=True)
-
-        fig_analista = px.bar(
-            analista_counts,
-            y='Analista',
-            x='Quantidade',
-            orientation='h',
-            text='Quantidade',
-            color_discrete_sequence=['#8E44AD'],
-            title='Quantidade por Analista',
-        )
-        fig_analista.update_traces(textposition='outside')
-        fig_analista.update_layout(
-            margin=dict(l=0, r=40, t=40, b=0),
-            xaxis_title='Quantidade',
-            yaxis_title='',
-            plot_bgcolor='white',
-            showlegend=False,
-        )
-        st.plotly_chart(fig_analista, use_container_width=True)
+    fig_ana, ax_ana = plt.subplots(figsize=(12, max(3, len(analista_counts) * 0.55)))
+    sns.barplot(data=analista_counts, y='Analista', x='Quantidade', ax=ax_ana, color='#8E44AD')
+    for bar, (_, row) in zip(ax_ana.patches, analista_counts.iterrows()):
+        ax_ana.text(bar.get_width() + 0.2, bar.get_y() + bar.get_height() / 2,
+                    str(row['Quantidade']), va='center', fontsize=10)
+    ax_ana.set_xlim(0, analista_counts['Quantidade'].max() * 1.15)
+    ax_ana.set_title('Quantidade por Analista', fontsize=13, fontweight='bold', loc='left', pad=12)
+    ax_ana.set_xlabel('Quantidade')
+    ax_ana.set_ylabel('')
+    ax_ana.spines[['top', 'right']].set_visible(False)
+    fig_ana.tight_layout()
+    st.pyplot(fig_ana, use_container_width=True)
+    plt.close(fig_ana)
 
     # -- Export PDF -------------------------------------------------------------
     st.markdown('---')

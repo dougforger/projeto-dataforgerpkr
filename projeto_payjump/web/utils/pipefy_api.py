@@ -1,3 +1,4 @@
+import json
 import time
 
 import pandas as pd
@@ -26,6 +27,28 @@ def _post(query: str, variables: dict | None = None) -> dict:
     return dados['data']
 
 
+def _parse_tipo(valor: str | None) -> str:
+    """investiga_o_interna (checklist_vertical): '["Sim"]' ou '[]' → interno; None → denúncia."""
+    if not valor:
+        return 'Denúncia'
+    if '"Sim"' in valor or valor.strip() == '[]':
+        return 'Investigação interna'
+    return 'Denúncia'
+
+
+def _parse_analista(valor: str | None) -> str | None:
+    """respons_vel_pela_an_lise chega como '["Nome"]' — extrai o primeiro elemento."""
+    if not valor:
+        return None
+    try:
+        parsed = json.loads(valor)
+        if isinstance(parsed, list) and parsed:
+            return parsed[0]
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return valor
+
+
 def testar_conexao() -> dict:
     """Retorna id, name e email do usuário autenticado."""
     return _post('{ me { id name email } }')['me']
@@ -39,8 +62,8 @@ def buscar_todos_os_cards(pipe_id: int = PIPE_ID) -> pd.DataFrame:
     """
     _CAMPOS = {
         'categoria_category',
-        'tipo_de_ocorr_ncia',
-        'resultado_da_an_lise',
+        'investiga_o_interna',
+        'status_final',
         'respons_vel_pela_an_lise',
     }
     query = """
@@ -86,9 +109,9 @@ def buscar_todos_os_cards(pipe_id: int = PIPE_ID) -> pd.DataFrame:
                 'id': no['id'],
                 'criado_em': no['createdAt'],
                 'categoria': campos.get('categoria_category'),
-                'tipo': campos.get('tipo_de_ocorr_ncia'),
-                'resultado': campos.get('resultado_da_an_lise'),
-                'analista': campos.get('respons_vel_pela_an_lise'),
+                'tipo': _parse_tipo(campos.get('investiga_o_interna')),
+                'resultado': campos.get('status_final') or None,
+                'analista': _parse_analista(campos.get('respons_vel_pela_an_lise')),
             })
         if not pagina['pageInfo']['hasNextPage']:
             break
@@ -103,6 +126,10 @@ def buscar_todos_os_cards(pipe_id: int = PIPE_ID) -> pd.DataFrame:
             .dt.tz_convert('America/Sao_Paulo')
             .dt.date
         )
+        # Cards sem status_final: internos → Positivo, denúncias → Negativo
+        mask_sem = df['resultado'].isna()
+        df.loc[mask_sem & (df['tipo'] == 'Investigação interna'), 'resultado'] = 'Positivo'
+        df.loc[mask_sem & (df['tipo'] != 'Investigação interna'), 'resultado'] = 'Negativo'
     return df
 
 
