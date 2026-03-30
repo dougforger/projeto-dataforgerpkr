@@ -1,11 +1,16 @@
 import datetime
-import time
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 import streamlit as st
 
 from utils.pipefy_api import buscar_contagem_cards, buscar_todos_os_cards, testar_conexao
+from utils.pipefy_db import (
+    carregar_cards as carregar_cards_db,
+    obter_ultima_sincronizacao,
+    registrar_sincronizacao,
+    sincronizar_cards,
+)
 from utils.pipefy_pdf import OPCOES_GRAFICOS, aplicar_fonte_mpl, gerar_pdf_dashboard
 
 # -----------------------------------------------------
@@ -30,15 +35,6 @@ CATEGORIAS = ['Collusion', 'Software Ilegal (BOT)', 'Abuso de Chat', 'Chip Dumpi
 TIPOS = ['Investigação interna', 'Denúncia']
 RESULTADOS = ['Positivo', 'Negativo']
 ANALISTAS = ['Eduardo Da Silva', 'Bruno Zangief', 'Frederyk Matos Santana', 'Douglas Ferreira', 'José Aureomar Chaves Wolff Neto', 'Luiz Benedito Souto Mendes Santos', 'Thiago Reis de Oliveira']
-
-# -----------------------------------------------------
-# DADOS (cache manual no session_state — TTL de 1 hora)
-# -----------------------------------------------------
-_TTL = 3600
-
-def _cache_expirado() -> bool:
-    ts = st.session_state.get('pipefy_ts')
-    return ts is None or (time.time() - ts) > _TTL
 
 # -----------------------------------------------------
 # LAYOUT
@@ -91,8 +87,7 @@ with col_filtros:
     st.markdown('---')
 
     if st.button('🔄 Atualizar dados', width='stretch'):
-        st.session_state.pop('pipefy_df', None)
-        st.session_state.pop('pipefy_ts', None)
+        st.session_state['pipefy_sincronizar'] = True
         st.rerun()
 
     # Diagnóstico
@@ -111,7 +106,8 @@ with col_filtros:
 # CARREGA E FILTRA OS DADOS
 # -----------------------------------------------------
 with col_dashboard:
-    if _cache_expirado() or 'pipefy_df' not in st.session_state:
+    # -- Sincronização via botão "Atualizar dados" --------------------------------
+    if st.session_state.pop('pipefy_sincronizar', False):
         try:
             total_cards = buscar_contagem_cards()
         except Exception:
@@ -121,18 +117,31 @@ with col_dashboard:
         barra = st.progress(0, text=texto_base)
 
         def _on_progress(n: int) -> None:
-            if total_cards > 0:
-                pct = min(n / total_cards, 1.0)
-                barra.progress(pct, text=f'{texto_base}  {n:,} / {total_cards:,}')
-            else:
-                barra.progress(0, text=f'{texto_base}  {n:,} carregados')
+            pct = min(n / total_cards, 1.0) if total_cards > 0 else 0
+            barra.progress(pct, text=f'{texto_base}  {n:,} / {total_cards:,}')
 
-        df_carregado = buscar_todos_os_cards(on_progress=_on_progress)
-        barra.progress(1.0, text=f'✅ {len(df_carregado):,} cards carregados.')
-        st.session_state['pipefy_df'] = df_carregado
-        st.session_state['pipefy_ts'] = time.time()
+        df_novo = buscar_todos_os_cards(on_progress=_on_progress)
+        barra.progress(1.0, text='Sincronizando banco de dados...')
+        inseridos, atualizados = sincronizar_cards(df_novo)
+        registrar_sincronizacao()
+        st.session_state.pop('pipefy_df', None)   # força reload do banco na próxima linha
+        barra.progress(1.0, text=f'✅ {len(df_novo):,} cards — {inseridos:,} novos, {atualizados:,} atualizados.')
+
+    # -- Indicador de última sincronização ----------------------------------------
+    ultima_sync = obter_ultima_sincronizacao()
+    if ultima_sync:
+        st.caption(f'Última atualização: {ultima_sync.strftime("%d/%m/%Y às %H:%M")}')
+    else:
+        st.info('Nenhuma sincronização encontrada. Clique em **Atualizar dados** para carregar os cards do Pipefy.')
+
+    # -- Carrega do banco (cache em session_state para evitar leituras repetidas) --
+    if 'pipefy_df' not in st.session_state:
+        st.session_state['pipefy_df'] = carregar_cards_db()
 
     df_total = st.session_state['pipefy_df']
+
+    if df_total.empty:
+        st.stop()
 
     mask = (df_total['criado_em'] >= data_inicial) & (df_total['criado_em'] <= data_final)
     # isin() retorna False para NaN — só aplica o filtro se for seleção parcial
