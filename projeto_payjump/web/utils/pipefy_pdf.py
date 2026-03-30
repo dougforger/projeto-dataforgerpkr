@@ -5,8 +5,11 @@ ESTILO_LEGENDA, LOGO_DEITADO, ESTILO_TABELA). Sem código Streamlit.
 """
 import io
 
+from pathlib import Path
+
 import matplotlib
 matplotlib.use('Agg')
+import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
@@ -21,10 +24,33 @@ from .pdf_config import (
     styles,
 )
 
+_FONT_DIR = Path(__file__).resolve().parent.parent / 'fonts'
+
+OPCOES_GRAFICOS = [
+    'Resultado das Análises',
+    'Quantidade por Categoria',
+    'Tabela Resumo por Categoria',
+    'Quantidade por Analista',
+]
+
 # Cores institucionais dos gráficos (alinhadas com a página)
 _COR_NEGATIVO = '#95A5A6'   # cinza neutro — sem infração confirmada
 _COR_POSITIVO = '#F0A64D'   # âmbar Suprema — infração confirmada
 _COR_ANALISTA = '#8E44AD'
+
+
+def aplicar_fonte_mpl() -> None:
+    """Registra Calibri Light e define como fonte padrão do matplotlib."""
+    for ttf in ('calibril.ttf', 'calibrib.ttf', 'calibrili.ttf', 'calibriz.ttf'):
+        try:
+            fm.fontManager.addfont(str(_FONT_DIR / ttf))
+        except Exception:
+            pass
+    try:
+        nome = fm.FontProperties(fname=str(_FONT_DIR / 'calibril.ttf')).get_name()
+        plt.rcParams['font.family'] = nome
+    except Exception:
+        pass
 
 
 # -----------------------------------------------------
@@ -171,7 +197,7 @@ def _grafico_analista(df: pd.DataFrame, largura: float) -> list:
 
     altura = max(2.5, len(analistas) * 0.55)
     fig, ax = plt.subplots(figsize=(10, altura))
-    bars = ax.barh(analistas, vals, color=_COR_ANALISTA)
+    bars = ax.barh(analistas, vals, color=_COR_POSITIVO)
 
     for bar, val in zip(bars, vals):
         ax.text(bar.get_width() + 0.2, bar.get_y() + bar.get_height() / 2,
@@ -190,7 +216,11 @@ def _grafico_analista(df: pd.DataFrame, largura: float) -> list:
 # FUNÇÃO PRINCIPAL
 # -----------------------------------------------------
 
-def gerar_pdf_dashboard(df: pd.DataFrame, filtros: dict) -> bytes:
+def gerar_pdf_dashboard(
+    df: pd.DataFrame,
+    filtros: dict,
+    graficos: list[str] | None = None,
+) -> bytes:
     """Gera PDF do dashboard Pipefy Security PKR.
 
     Args:
@@ -199,11 +229,14 @@ def gerar_pdf_dashboard(df: pd.DataFrame, filtros: dict) -> bytes:
             data_inicial, data_final (datetime.date)
             categorias, tipos, resultados, analistas (listas selecionadas)
             ref_categorias, ref_tipos, ref_resultados, ref_analistas (listas completas, para 'Todos')
+        graficos: lista de seções a incluir (usa OPCOES_GRAFICOS se None).
 
     Returns:
         Bytes do PDF gerado.
     """
+    graficos_ativos = set(graficos if graficos is not None else OPCOES_GRAFICOS)
     sns.set_theme(style='whitegrid', font_scale=1.0)
+    aplicar_fonte_mpl()
 
     buffer, doc, story = inicializar_pdf(
         protocolo='',
@@ -258,31 +291,44 @@ def gerar_pdf_dashboard(df: pd.DataFrame, filtros: dict) -> bytes:
     story.append(Spacer(1, 16))
 
     # -- Gráfico: Resultado -----------------------------------------------------
-    story.append(Paragraph('Resultado das Análises', styles['h2']))
-    story.append(Paragraph(
-        'Distribuição percentual entre análises com resultado Negativo e Positivo.',
-        ESTILO_LEGENDA,
-    ))
-    story.extend(_grafico_resultado(df, LARGURA_PAGINA))
-    story.append(Spacer(1, 16))
+    if 'Resultado das Análises' in graficos_ativos:
+        story.append(Paragraph('Resultado das Análises', styles['h2']))
+        story.append(Paragraph(
+            'Distribuição percentual entre análises com resultado Negativo e Positivo.',
+            ESTILO_LEGENDA,
+        ))
+        story.extend(_grafico_resultado(df, LARGURA_PAGINA))
+        story.append(Spacer(1, 16))
 
     # -- Gráfico: Categoria -----------------------------------------------------
-    story.append(PageBreak())
-    story.append(Paragraph('Quantidade por Categoria', styles['h2']))
-    story.append(Paragraph(
-        'Distribuição dos protocolos por categoria de infração analisada, ordenada por volume.',
-        ESTILO_LEGENDA,
-    ))
-    story.extend(_grafico_categoria(df, LARGURA_PAGINA))
-    story.extend(_tabela_categoria_pdf(df, LARGURA_PAGINA))
-    story.append(Spacer(1, 16))
+    tem_categoria = 'Quantidade por Categoria' in graficos_ativos
+    tem_tabela_cat = 'Tabela Resumo por Categoria' in graficos_ativos
+    if tem_categoria or tem_tabela_cat:
+        story.append(PageBreak())
+    if tem_categoria:
+        story.append(Paragraph('Quantidade por Categoria', styles['h2']))
+        story.append(Paragraph(
+            'Distribuição dos protocolos por categoria de infração analisada, ordenada por volume.',
+            ESTILO_LEGENDA,
+        ))
+        story.extend(_grafico_categoria(df, LARGURA_PAGINA))
+        story.append(Spacer(1, 16))
+    if tem_tabela_cat:
+        story.append(Paragraph('Detalhamento por Categoria', styles['h2']))
+        story.append(Paragraph(
+            'Resumo quantitativo por categoria: negativos, positivos, total e participação percentual.',
+            ESTILO_LEGENDA,
+        ))
+        story.extend(_tabela_categoria_pdf(df, LARGURA_PAGINA))
+        story.append(Spacer(1, 16))
 
     # -- Gráfico: Analista ------------------------------------------------------
-    story.append(Paragraph('Quantidade por Analista', styles['h2']))
-    story.append(Paragraph(
-        'Quantidade de protocolos atribuídos por analista no período selecionado.',
-        ESTILO_LEGENDA,
-    ))
-    story.extend(_grafico_analista(df, LARGURA_PAGINA))
+    if 'Quantidade por Analista' in graficos_ativos:
+        story.append(Paragraph('Quantidade por Analista', styles['h2']))
+        story.append(Paragraph(
+            'Quantidade de protocolos atribuídos por analista no período selecionado.',
+            ESTILO_LEGENDA,
+        ))
+        story.extend(_grafico_analista(df, LARGURA_PAGINA))
 
     return finalizar_pdf(buffer, doc, story).read()

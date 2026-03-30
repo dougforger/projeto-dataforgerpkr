@@ -5,7 +5,7 @@ import seaborn as sns
 import streamlit as st
 
 from utils.pipefy_api import buscar_todos_os_cards, testar_conexao
-from utils.pipefy_pdf import gerar_pdf_dashboard
+from utils.pipefy_pdf import OPCOES_GRAFICOS, aplicar_fonte_mpl, gerar_pdf_dashboard
 
 # -----------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA
@@ -87,7 +87,7 @@ with col_filtros:
 
     st.markdown('---')
 
-    if st.button('🔄 Atualizar dados', use_container_width=True):
+    if st.button('🔄 Atualizar dados', width='stretch'):
         st.cache_data.clear()
         st.rerun()
 
@@ -150,6 +150,7 @@ with col_dashboard:
     st.markdown('---')
 
     sns.set_theme(style='whitegrid', font_scale=1.05)
+    aplicar_fonte_mpl()
 
     # -- Gráfico 1: Negativo × Positivo ------------------------------------------
     pct_neg = n_neg / total * 100 if total else 0
@@ -171,7 +172,7 @@ with col_dashboard:
     ax_res.legend(loc='lower center', bbox_to_anchor=(0.5, 1.08), ncol=2, frameon=False)
     ax_res.spines[['top', 'right', 'left']].set_visible(False)
     fig_res.tight_layout()
-    st.pyplot(fig_res, use_container_width=True)
+    st.pyplot(fig_res, width='stretch')
     plt.close(fig_res)
 
     # -- Gráfico 2: Por Categoria (stacked positivo/negativo) -------------------
@@ -212,7 +213,7 @@ with col_dashboard:
     ax_cat.set_ylabel('')
     ax_cat.spines[['top', 'right']].set_visible(False)
     fig_cat.tight_layout()
-    st.pyplot(fig_cat, use_container_width=True)
+    st.pyplot(fig_cat, width='stretch')
     plt.close(fig_cat)
 
     # Tabela resumo de categorias
@@ -222,7 +223,7 @@ with col_dashboard:
     df_cat_tabela.index.name = 'Categoria'
     df_cat_tabela = df_cat_tabela.rename(columns={'Negativo': 'Negativos', 'Positivo': 'Positivos'})
     df_cat_tabela = df_cat_tabela.reset_index()
-    st.dataframe(df_cat_tabela, use_container_width=True, hide_index=True)
+    st.dataframe(df_cat_tabela, width='stretch', hide_index=True)
 
     # -- Gráfico 3: Por Analista -------------------------------------------------
     analista_counts = df['analista'].dropna().value_counts().reset_index()
@@ -230,7 +231,7 @@ with col_dashboard:
     analista_counts = analista_counts.sort_values('Quantidade', ascending=True)  # ascending → maior no topo (barh)
 
     fig_ana, ax_ana = plt.subplots(figsize=(12, max(3, len(analista_counts) * 0.65)))
-    bars = ax_ana.barh(analista_counts['Analista'], analista_counts['Quantidade'], color='#8E44AD')
+    bars = ax_ana.barh(analista_counts['Analista'], analista_counts['Quantidade'], color='#F0A64D')
     for bar, val in zip(bars, analista_counts['Quantidade']):
         ax_ana.text(bar.get_width() + 0.2, bar.get_y() + bar.get_height() / 2,
                     str(val), va='center', fontsize=10)
@@ -240,11 +241,17 @@ with col_dashboard:
     ax_ana.set_ylabel('')
     ax_ana.spines[['top', 'right']].set_visible(False)
     fig_ana.tight_layout()
-    st.pyplot(fig_ana, use_container_width=True)
+    st.pyplot(fig_ana, width='stretch')
     plt.close(fig_ana)
 
     # -- Export PDF -------------------------------------------------------------
     st.markdown('---')
+    graficos_pdf = st.multiselect(
+        'Gráficos a incluir no PDF:',
+        OPCOES_GRAFICOS,
+        default=OPCOES_GRAFICOS,
+        key='graficos-pdf',
+    )
     if st.button('📄 Exportar PDF', use_container_width=False):
         with st.spinner('Gerando PDF...'):
             filtros = {
@@ -259,8 +266,8 @@ with col_dashboard:
                 'ref_resultados': RESULTADOS,
                 'ref_analistas': ANALISTAS,
             }
-            pdf_bytes = gerar_pdf_dashboard(df, filtros)
-        nome_arquivo = f'dashboard_security_pkr_{data_inicial}_{data_final}.pdf'
+            pdf_bytes = gerar_pdf_dashboard(df, filtros, graficos=graficos_pdf)
+        nome_arquivo = f'Relatório_Security_PKR_{data_inicial}_{data_final}.pdf'
         st.download_button(
             label='⬇️ Baixar PDF',
             data=pdf_bytes,
