@@ -45,11 +45,10 @@ col_filtros, col_dashboard = st.columns([1, 6])
 with col_filtros:
     st.markdown('#### 🔍 Filtros')
     hoje = datetime.date.today()
-    primeiro_dia_mes = hoje.replace(day=1)
 
     data_inicial = st.date_input(
         'Data inicial:',
-        primeiro_dia_mes,
+        DATA_PRIMEIRO_CARD,
         min_value=DATA_PRIMEIRO_CARD,
         max_value=hoje,
         key='filtro-data-inicial',
@@ -111,19 +110,20 @@ with col_dashboard:
     df_total = carregar_cards()
 
     mask = (df_total['criado_em'] >= data_inicial) & (df_total['criado_em'] <= data_final)
-    if categorias_selecionadas:
+    # isin() retorna False para NaN — só aplica o filtro se for seleção parcial
+    if set(categorias_selecionadas) < set(CATEGORIAS):
         mask &= df_total['categoria'].isin(categorias_selecionadas)
-    if tipos_selecionados:
+    if set(tipos_selecionados) < set(TIPOS):
         mask &= df_total['tipo'].isin(tipos_selecionados)
-    if resultados_selecionados:
+    if set(resultados_selecionados) < set(RESULTADOS):
         mask &= df_total['resultado'].isin(resultados_selecionados)
-    if analistas_selecionados:
+    if set(analistas_selecionados) < set(ANALISTAS):
         mask &= df_total['analista'].isin(analistas_selecionados)
 
     df = df_total[mask].copy()
 
     if df.empty:
-        st.warning('Nenhum protocolo encontrado com os filtros selecionados.')
+        st.warning(f'Nenhum protocolo encontrado. {len(df_total):,} cards carregados no total — verifique os filtros.')
         st.stop()
 
     # -- Métricas ----------------------------------------------------------------
