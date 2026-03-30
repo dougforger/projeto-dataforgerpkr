@@ -9,6 +9,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
+import seaborn as sns
 from reportlab.lib.units import cm
 from reportlab.platypus import Image as RLImage, Paragraph, Spacer
 
@@ -20,10 +21,9 @@ from .pdf_config import (
     styles,
 )
 
-# Cores institucionais dos gráficos
-_COR_NEGATIVO = '#C0392B'
-_COR_POSITIVO = '#27AE60'
-_COR_CATEGORIA = '#2980B9'
+# Cores institucionais dos gráficos (alinhadas com a página)
+_COR_NEGATIVO = '#95A5A6'   # cinza neutro — sem infração confirmada
+_COR_POSITIVO = '#F0A64D'   # âmbar Suprema — infração confirmada
 _COR_ANALISTA = '#8E44AD'
 
 
@@ -85,23 +85,33 @@ def _grafico_resultado(df: pd.DataFrame, largura: float) -> list:
 
 
 def _grafico_categoria(df: pd.DataFrame, largura: float) -> list:
-    """Barra horizontal por categoria com percentual."""
-    total = len(df)
-    contagem = df['categoria'].value_counts()
-    cats = contagem.index.tolist()[::-1]
-    vals = contagem.values.tolist()[::-1]
-    pcts = [v / total * 100 for v in vals]
+    """Barra horizontal stacked positivo/negativo por categoria."""
+    cat_res = df.groupby('categoria')['resultado'].value_counts().unstack(fill_value=0)
+    for col in ['Positivo', 'Negativo']:
+        if col not in cat_res.columns:
+            cat_res[col] = 0
+    cat_res['Total'] = cat_res['Positivo'] + cat_res['Negativo']
+    cat_res = cat_res.sort_values('Total', ascending=True)  # ascending → maior no topo (barh)
 
-    altura = max(2.5, len(cats) * 0.55)
+    cats = cat_res.index.tolist()
+    neg_vals = cat_res['Negativo'].tolist()
+    pos_vals = cat_res['Positivo'].tolist()
+
+    altura = max(2.5, len(cats) * 0.6)
     fig, ax = plt.subplots(figsize=(10, altura))
-    bars = ax.barh(cats, pcts, color=_COR_CATEGORIA)
+    ax.barh(cats, neg_vals, color=_COR_NEGATIVO, label='Negativos')
+    ax.barh(cats, pos_vals, left=neg_vals, color=_COR_POSITIVO, label='Positivos')
 
-    for bar, pct, val in zip(bars, pcts, vals):
-        ax.text(bar.get_width() + 0.5, bar.get_y() + bar.get_height() / 2,
-                f'{pct:.1f}%  ({val:,})', va='center', fontsize=9)
+    for i, (neg, pos) in enumerate(zip(neg_vals, pos_vals)):
+        if neg > 0:
+            ax.text(neg / 2, i, str(neg), ha='center', va='center',
+                    color='white', fontsize=8, fontweight='bold')
+        if pos > 0:
+            ax.text(neg + pos / 2, i, str(pos), ha='center', va='center',
+                    color='white', fontsize=8, fontweight='bold')
 
-    ax.set_xlim(0, max(pcts) * 1.25 if pcts else 100)
-    ax.set_xlabel('%', fontsize=9)
+    ax.legend(loc='lower right', fontsize=8, frameon=False)
+    ax.set_xlabel('Quantidade', fontsize=9)
     ax.spines[['top', 'right']].set_visible(False)
     ax.tick_params(labelsize=9)
     fig.tight_layout()
@@ -112,6 +122,7 @@ def _grafico_categoria(df: pd.DataFrame, largura: float) -> list:
 def _grafico_analista(df: pd.DataFrame, largura: float) -> list:
     """Barra horizontal por analista com contagem."""
     contagem = df['analista'].dropna().value_counts()
+    # value_counts() → descrescente; [::-1] inverte para ascending (barh: maior no topo)
     analistas = contagem.index.tolist()[::-1]
     vals = contagem.values.tolist()[::-1]
 
@@ -149,6 +160,8 @@ def gerar_pdf_dashboard(df: pd.DataFrame, filtros: dict) -> bytes:
     Returns:
         Bytes do PDF gerado.
     """
+    sns.set_theme(style='whitegrid', font_scale=1.0)
+
     buffer, doc, story = inicializar_pdf(
         protocolo='',
         titulo_completo='Dashboard — Security PKR',

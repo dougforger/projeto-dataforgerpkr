@@ -174,20 +174,31 @@ with col_dashboard:
     st.pyplot(fig_res, use_container_width=True)
     plt.close(fig_res)
 
-    # -- Gráfico 2: Por Categoria ------------------------------------------------
-    cat_counts = df['categoria'].value_counts().reset_index()
-    cat_counts.columns = ['Categoria', 'Quantidade']
-    cat_counts['%'] = (cat_counts['Quantidade'] / total * 100).round(1)
-    cat_counts = cat_counts.sort_values('Quantidade', ascending=True)
+    # -- Gráfico 2: Por Categoria (stacked positivo/negativo) -------------------
+    cat_res = df.groupby('categoria')['resultado'].value_counts().unstack(fill_value=0)
+    for col in ['Positivo', 'Negativo']:
+        if col not in cat_res.columns:
+            cat_res[col] = 0
+    cat_res['Total'] = cat_res['Positivo'] + cat_res['Negativo']
+    cat_res = cat_res.sort_values('Total', ascending=True)  # ascending → maior no topo (barh)
 
-    fig_cat, ax_cat = plt.subplots(figsize=(12, max(3, len(cat_counts) * 0.55)))
-    sns.barplot(data=cat_counts, y='Categoria', x='%', ax=ax_cat, color='#2980B9')
-    for bar, (_, row) in zip(ax_cat.patches, cat_counts.iterrows()):
-        ax_cat.text(bar.get_width() + 0.4, bar.get_y() + bar.get_height() / 2,
-                    f'{row["%"]:.1f}%  ({row["Quantidade"]:,})', va='center', fontsize=10)
-    ax_cat.set_xlim(0, cat_counts['%'].max() * 1.25)
+    cats = cat_res.index.tolist()
+    neg_vals = cat_res['Negativo'].tolist()
+    pos_vals = cat_res['Positivo'].tolist()
+
+    fig_cat, ax_cat = plt.subplots(figsize=(12, max(3, len(cats) * 0.65)))
+    ax_cat.barh(cats, neg_vals, color='#95A5A6', label='Negativos')
+    ax_cat.barh(cats, pos_vals, left=neg_vals, color='#F0A64D', label='Positivos')
+    for i, (neg, pos) in enumerate(zip(neg_vals, pos_vals)):
+        if neg > 0:
+            ax_cat.text(neg / 2, i, str(neg), ha='center', va='center',
+                        color='white', fontsize=9, fontweight='bold')
+        if pos > 0:
+            ax_cat.text(neg + pos / 2, i, str(pos), ha='center', va='center',
+                        color='white', fontsize=9, fontweight='bold')
     ax_cat.set_title('Quantidade por Categoria', fontsize=13, fontweight='bold', loc='left', pad=12)
-    ax_cat.set_xlabel('%')
+    ax_cat.legend(loc='lower right', frameon=False)
+    ax_cat.set_xlabel('Quantidade')
     ax_cat.set_ylabel('')
     ax_cat.spines[['top', 'right']].set_visible(False)
     fig_cat.tight_layout()
@@ -197,13 +208,13 @@ with col_dashboard:
     # -- Gráfico 3: Por Analista -------------------------------------------------
     analista_counts = df['analista'].dropna().value_counts().reset_index()
     analista_counts.columns = ['Analista', 'Quantidade']
-    analista_counts = analista_counts.sort_values('Quantidade', ascending=True)
+    analista_counts = analista_counts.sort_values('Quantidade', ascending=True)  # ascending → maior no topo (barh)
 
-    fig_ana, ax_ana = plt.subplots(figsize=(12, max(3, len(analista_counts) * 0.55)))
-    sns.barplot(data=analista_counts, y='Analista', x='Quantidade', ax=ax_ana, color='#8E44AD')
-    for bar, (_, row) in zip(ax_ana.patches, analista_counts.iterrows()):
+    fig_ana, ax_ana = plt.subplots(figsize=(12, max(3, len(analista_counts) * 0.65)))
+    bars = ax_ana.barh(analista_counts['Analista'], analista_counts['Quantidade'], color='#8E44AD')
+    for bar, val in zip(bars, analista_counts['Quantidade']):
         ax_ana.text(bar.get_width() + 0.2, bar.get_y() + bar.get_height() / 2,
-                    str(row['Quantidade']), va='center', fontsize=10)
+                    str(val), va='center', fontsize=10)
     ax_ana.set_xlim(0, analista_counts['Quantidade'].max() * 1.15)
     ax_ana.set_title('Quantidade por Analista', fontsize=13, fontweight='bold', loc='left', pad=12)
     ax_ana.set_xlabel('Quantidade')
