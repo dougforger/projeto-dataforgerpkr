@@ -1,31 +1,37 @@
-"""Persistência dos cards Pipefy em SQLite.
+"""Persistência dos cards Pipefy.
 
-Segue o padrão de utils/database.py: SQLAlchemy declarativo, Session/try/finally,
-banco em data/pipefy.db, inicialização automática no import.
+Backends:
+  • Supabase  — quando SUPABASE_URL e SUPABASE_KEY estiverem em st.secrets
+               (Streamlit Cloud ou .streamlit/secrets.toml local).
+               Acesso via REST/HTTPS — sem TCP na porta 5432.
+  • SQLite    — fallback automático para desenvolvimento sem secrets.
+
+Tabelas necessárias no Supabase (executar uma vez no SQL Editor):
+    CREATE TABLE IF NOT EXISTS pipefy_cards (
+        id TEXT PRIMARY KEY, criado_em DATE, categoria TEXT,
+        tipo TEXT, resultado TEXT, analista TEXT
+    );
+    CREATE TABLE IF NOT EXISTS pipefy_sync (
+        id INTEGER PRIMARY KEY, sincronizado_em TIMESTAMP WITH TIME ZONE
+    );
 """
 import datetime
 from pathlib import Path
 
 import pandas as pd
+
+# ── SQLite (fallback local) ────────────────────────────────────────────────────
 from sqlalchemy import Column, DateTime, Integer, String, Date, create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# ===== CONFIGURAÇÃO DO BANCO =====
-DB_PATH = Path(__file__).parent.parent / 'data' / 'pipefy.db'
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+_DB_PATH = Path(__file__).parent.parent / 'data' / 'pipefy.db'
 
-engine = create_engine(f'sqlite:///{DB_PATH}', echo=False)
 Base = declarative_base()
-Session = sessionmaker(bind=engine)
 
-
-# ===== MODELOS (TABELAS) =====
 
 class PipefyCard(Base):
-    """Um card do pipe Security PKR."""
     __tablename__ = 'pipefy_cards'
-
     id        = Column(String, primary_key=True)
     criado_em = Column(Date)
     categoria = Column(String, nullable=True)
@@ -33,82 +39,116 @@ class PipefyCard(Base):
     resultado = Column(String)
     analista  = Column(String, nullable=True)
 
-    def __repr__(self):
-        return f'<PipefyCard {self.id} — {self.categoria} / {self.resultado}>'
-
 
 class PipefySync(Base):
-    """Registro de data/hora da última sincronização (sempre id=1)."""
     __tablename__ = 'pipefy_sync'
-
     id              = Column(Integer, primary_key=True)
     sincronizado_em = Column(DateTime)
 
 
-# ===== INICIALIZAÇÃO =====
-
-def inicializar_banco() -> None:
-    """Cria as tabelas se não existirem. Chamada automaticamente no import."""
-    Base.metadata.create_all(engine)
+_engine  = None
+_Session = None
 
 
-inicializar_banco()
+def _get_engine():
+    global _engine, _Session
+    if _engine is None:
+        _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _engine  = create_engine(f'sqlite:///{_DB_PATH}', echo=False)
+        _Session = sessionmaker(bind=_engine)
+        Base.metadata.create_all(_engine)
+    return _engine
 
 
-# ===== FUNÇÕES DE ACESSO =====
+def _new_session():
+    _get_engine()
+    return _Session()
+
+
+# ── Supabase (Streamlit Cloud / local com secrets.toml) ───────────────────────
+
+def _usar_supabase() -> bool:
+    """True quando SUPABASE_URL e SUPABASE_KEY estão disponíveis em st.secrets."""
+    try:
+        import streamlit as st
+        url = st.secrets.get('SUPABASE_URL', '')
+        key = st.secrets.get('SUPABASE_KEY', '')
+        return bool(url and key)
+    except Exception:
+        return False
+
+
+def _supabase_client():
+    """Cria e retorna o cliente Supabase via REST (porta 443)."""
+    import streamlit as st
+    from supabase import create_client
+    return create_client(st.secrets['SUPABASE_URL'], st.secrets['SUPABASE_KEY'])
+
+
+_LOTE = 500  # máximo de registros por requisição de upsert
+
+
+# ── API pública ────────────────────────────────────────────────────────────────
+
+def _supabase_paginar(client, tabela: str, colunas: str = '*') -> list:
+    """Lê todos os registros de uma tabela Supabase paginando de 1.000 em 1.000.
+
+    O PostgREST limita cada requisição a 1.000 linhas por padrão.
+    """
+    todos: list = []
+    inicio = 0
+    while True:
+        resp = (
+            client.table(tabela)
+            .select(colunas)
+            .range(inicio, inicio + _LOTE - 1)
+            .execute()
+        )
+        lote = resp.data or []
+        todos.extend(lote)
+        if len(lote) < _LOTE:
+            break
+        inicio += _LOTE
+    return todos
+
 
 def carregar_cards() -> pd.DataFrame:
-    """Lê todos os cards do banco e retorna DataFrame com as colunas padrão.
+    """Retorna todos os cards do banco como DataFrame."""
+    _colunas = ['id', 'criado_em', 'categoria', 'tipo', 'resultado', 'analista']
 
-    Retorna DataFrame vazio (mesmas colunas) se o banco ainda não tiver dados.
-    """
-    session = Session()
+    if _usar_supabase():
+        client = _supabase_client()
+        dados = _supabase_paginar(client, 'pipefy_cards')
+        if not dados:
+            return pd.DataFrame(columns=_colunas)
+        df = pd.DataFrame(dados)[_colunas]
+        df['criado_em'] = pd.to_datetime(df['criado_em']).dt.date
+        return df
+
+    # SQLite
+    session = _new_session()
     try:
         cards = session.query(PipefyCard).all()
         if not cards:
-            return pd.DataFrame(
-                columns=['id', 'criado_em', 'categoria', 'tipo', 'resultado', 'analista']
-            )
+            return pd.DataFrame(columns=_colunas)
         return pd.DataFrame([{
-            'id':        c.id,
-            'criado_em': c.criado_em,
-            'categoria': c.categoria,
-            'tipo':      c.tipo,
-            'resultado': c.resultado,
-            'analista':  c.analista,
+            'id': c.id, 'criado_em': c.criado_em, 'categoria': c.categoria,
+            'tipo': c.tipo, 'resultado': c.resultado, 'analista': c.analista,
         } for c in cards])
     finally:
         session.close()
 
 
 def sincronizar_cards(df: pd.DataFrame) -> tuple[int, int]:
-    """Upsert de todos os cards do DataFrame no banco.
-
-    Cards novos são inseridos; cards existentes têm todos os campos atualizados
-    (garante que alterações de resultado, analista, etc. sejam capturadas).
-
-    Returns:
-        (inseridos, atualizados): contagem de cards novos e de cards já existentes.
-    """
+    """Upsert completo dos cards. Retorna (inseridos, atualizados)."""
     if df.empty:
         return 0, 0
 
-    # Identifica quais IDs já existem para separar inserções de atualizações
-    session = Session()
-    try:
-        ids_existentes = {row[0] for row in session.query(PipefyCard.id).all()}
-    finally:
-        session.close()
-
-    ids_novos = set(df['id']) - ids_existentes
-    inseridos  = len(ids_novos)
-    atualizados = len(df) - inseridos
-
-    # Prepara registros — criado_em (datetime.date) convertido para ISO string
     registros = [
         {
-            'id':        row['id'],
-            'criado_em': row['criado_em'].isoformat() if row['criado_em'] is not None else None,
+            'id':        str(row['id']),
+            'criado_em': row['criado_em'].isoformat()
+                         if isinstance(row['criado_em'], datetime.date) else None,
             'categoria': row['categoria'] if pd.notna(row.get('categoria')) else None,
             'tipo':      row['tipo'],
             'resultado': row['resultado'],
@@ -117,7 +157,28 @@ def sincronizar_cards(df: pd.DataFrame) -> tuple[int, int]:
         for _, row in df.iterrows()
     ]
 
-    # INSERT OR REPLACE: insere novos e substitui existentes pelo primary key
+    if _usar_supabase():
+        client = _supabase_client()
+        # Conta existentes antes do upsert para calcular inseridos vs atualizados
+        ids_existentes = {r['id'] for r in _supabase_paginar(client, 'pipefy_cards', 'id')}
+        inseridos   = len(set(df['id'].astype(str)) - ids_existentes)
+        atualizados = len(df) - inseridos
+        # Upsert em lotes
+        for i in range(0, len(registros), _LOTE):
+            client.table('pipefy_cards').upsert(registros[i:i + _LOTE]).execute()
+        return inseridos, atualizados
+
+    # SQLite
+    engine = _get_engine()
+    session = _new_session()
+    try:
+        ids_existentes = {row[0] for row in session.query(PipefyCard.id).all()}
+    finally:
+        session.close()
+
+    inseridos   = len(set(df['id'].astype(str)) - ids_existentes)
+    atualizados = len(df) - inseridos
+
     with engine.begin() as conn:
         conn.execute(
             text(
@@ -127,13 +188,19 @@ def sincronizar_cards(df: pd.DataFrame) -> tuple[int, int]:
             ),
             registros,
         )
-
     return inseridos, atualizados
 
 
 def obter_ultima_sincronizacao() -> datetime.datetime | None:
     """Retorna o datetime da última sincronização, ou None se nunca ocorreu."""
-    session = Session()
+    if _usar_supabase():
+        client = _supabase_client()
+        resp = client.table('pipefy_sync').select('sincronizado_em').eq('id', 1).execute()
+        if resp.data:
+            return datetime.datetime.fromisoformat(resp.data[0]['sincronizado_em'])
+        return None
+
+    session = _new_session()
     try:
         sync = session.query(PipefySync).filter_by(id=1).first()
         return sync.sincronizado_em if sync else None
@@ -142,11 +209,20 @@ def obter_ultima_sincronizacao() -> datetime.datetime | None:
 
 
 def registrar_sincronizacao() -> None:
-    """Grava/atualiza o registro de sincronização (id=1) com o datetime atual."""
-    session = Session()
+    """Grava/atualiza o registro de sincronização com o datetime atual."""
+    agora = datetime.datetime.now(datetime.timezone.utc)
+
+    if _usar_supabase():
+        client = _supabase_client()
+        client.table('pipefy_sync').upsert({
+            'id': 1,
+            'sincronizado_em': agora.isoformat(),
+        }).execute()
+        return
+
+    session = _new_session()
     try:
         sync = session.query(PipefySync).filter_by(id=1).first()
-        agora = datetime.datetime.now()
         if sync:
             sync.sincronizado_em = agora
         else:
