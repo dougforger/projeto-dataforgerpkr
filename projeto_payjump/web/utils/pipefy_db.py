@@ -16,6 +16,7 @@ Tabelas necessárias no Supabase (executar uma vez no SQL Editor):
     );
 """
 import datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 import pandas as pd
@@ -210,7 +211,8 @@ def obter_ultima_sincronizacao() -> datetime.datetime | None:
 
 def registrar_sincronizacao() -> None:
     """Grava/atualiza o registro de sincronização com o datetime atual."""
-    agora = datetime.datetime.now(datetime.timezone.utc)
+    sao_paulo_tz = ZoneInfo('America/Sao_Paulo')
+    agora = datetime.datetime.now(sao_paulo_tz)
 
     if _usar_supabase():
         client = _supabase_client()
