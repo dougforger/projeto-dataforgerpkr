@@ -4,7 +4,7 @@ Segue o padrão do projeto: ReportLab + pdf_config.py (fontes Calibri Light,
 ESTILO_LEGENDA, LOGO_DEITADO, ESTILO_TABELA). Sem código Streamlit.
 """
 import io
-
+import textwrap
 from pathlib import Path
 
 import matplotlib
@@ -28,9 +28,19 @@ _FONT_DIR = Path(__file__).resolve().parent.parent / 'fonts'
 
 OPCOES_GRAFICOS = [
     'Resultado das Análises',
+    'Internos × Denúncias',
     'Quantidade por Categoria',
     'Tabela Resumo por Categoria',
     'Quantidade por Analista',
+]
+
+OPCOES_METRICAS = [
+    'Total de Protocolos',
+    'Positivos vs Total',
+    'Internos vs Positivos',
+    'Investigações Internas',
+    'Denúncias',
+    'Média por Dia',
 ]
 
 # Cores institucionais dos gráficos (alinhadas com a página)
@@ -77,8 +87,73 @@ def _fmt_lista(selecionados: list, todos: list) -> str:
 
 
 # -----------------------------------------------------
-# GRÁFICOS
+# MÉTRICAS E GRÁFICOS
 # -----------------------------------------------------
+
+def _metricas_como_cards(itens: list[dict], largura: float) -> list:
+    """Renderiza métricas como cards estilo Streamlit (label + valor + delta) em matplotlib."""
+    n = len(itens)
+    if not n:
+        return []
+
+    fig, axes = plt.subplots(1, n, figsize=(10, 1.8), facecolor='white')
+    if n == 1:
+        axes = [axes]
+
+    for ax, item in zip(axes, itens):
+        ax.set_facecolor('white')
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis('off')
+        # Acento âmbar no topo
+        ax.plot([0.04, 0.96], [0.97, 0.97], color='#F0A64D', linewidth=2.5,
+                transform=ax.transAxes, clip_on=False, solid_capstyle='butt')
+        # Label — com wrapping para caber em 2 linhas se necessário
+        label_wrapped = '\n'.join(textwrap.wrap(item['label'], width=16))
+        ax.text(0.06, 0.88, label_wrapped, transform=ax.transAxes,
+                fontsize=10, color='#777777', va='top', ha='left', linespacing=1.2)
+        # Valor
+        ax.text(0.06, 0.44, item['valor'], transform=ax.transAxes,
+                fontsize=20, fontweight='bold', color='#1C1C1C', va='center', ha='left')
+        # Delta
+        if item.get('delta'):
+            ax.text(0.06, 0.10, item['delta'], transform=ax.transAxes,
+                    fontsize=9, color='#777777', va='bottom', ha='left')
+
+    fig.subplots_adjust(wspace=0.10, left=0.01, right=0.99, top=0.90, bottom=0.06)
+    return [_fig_para_rl_image(fig, largura), Spacer(1, 8)]
+
+
+def _grafico_tipo(df: pd.DataFrame, largura: float) -> list:
+    """Barra horizontal 100% stacked: Denúncias (cinza) × Investigações Internas (âmbar)."""
+    total = len(df)
+    n_interno = (df['tipo'] == 'Investigação interna').sum()
+    n_denuncia = (df['tipo'] == 'Denúncia').sum()
+    pct_denuncia = n_denuncia / total * 100 if total else 0
+    pct_interno = n_interno / total * 100 if total else 0
+
+    fig, ax = plt.subplots(figsize=(10, 1.4))
+    ax.barh([''], [pct_denuncia], color=_COR_NEGATIVO, label=f'Denúncias ({n_denuncia:,})')
+    ax.barh([''], [pct_interno], left=[pct_denuncia], color=_COR_POSITIVO,
+            label=f'Investigações Internas ({n_interno:,})')
+
+    if pct_denuncia > 6:
+        ax.text(pct_denuncia / 2, 0, f'{pct_denuncia:.1f}%',
+                ha='center', va='center', color='white', fontsize=12, fontweight='bold')
+    if pct_interno > 6:
+        ax.text(pct_denuncia + pct_interno / 2, 0, f'{pct_interno:.1f}%',
+                ha='center', va='center', color='white', fontsize=12, fontweight='bold')
+
+    ax.set_xlim(0, 100)
+    ax.set_xlabel('%', fontsize=9)
+    ax.legend(loc='upper right', fontsize=9, frameon=False)
+    ax.spines[['top', 'right', 'left']].set_visible(False)
+    ax.tick_params(left=False, labelsize=9)
+    ax.set_yticklabels([])
+    fig.tight_layout()
+
+    return [_fig_para_rl_image(fig, largura), Spacer(1, 10)]
+
 
 def _grafico_resultado(df: pd.DataFrame, largura: float) -> list:
     """Barra horizontal 100% stacked: Negativo × Positivo."""
@@ -220,6 +295,7 @@ def gerar_pdf_dashboard(
     df: pd.DataFrame,
     filtros: dict,
     graficos: list[str] | None = None,
+    metricas: list[str] | None = None,
 ) -> bytes:
     """Gera PDF do dashboard Pipefy Security PKR.
 
@@ -235,12 +311,13 @@ def gerar_pdf_dashboard(
         Bytes do PDF gerado.
     """
     graficos_ativos = set(graficos if graficos is not None else OPCOES_GRAFICOS)
+    metricas_ativas = set(metricas if metricas is not None else OPCOES_METRICAS)
     sns.set_theme(style='whitegrid', font_scale=1.0)
     aplicar_fonte_mpl()
 
     buffer, doc, story = inicializar_pdf(
         protocolo='',
-        titulo_completo='Dashboard — Security PKR',
+        titulo_completo='Relatório de Casos — Security PKR',
     )
 
     # -- Seção de filtros -------------------------------------------------------
@@ -271,24 +348,35 @@ def gerar_pdf_dashboard(
     n_internos_pos = (
         (df['tipo'] == 'Investigação interna') & (df['resultado'] == 'Positivo')
     ).sum()
+    n_interno = (df['tipo'] == 'Investigação interna').sum()
+    n_denuncia = (df['tipo'] == 'Denúncia').sum()
+    period_days = max(1, (filtros['data_final'] - filtros['data_inicial']).days + 1)
+    media_por_dia = total / period_days
     pct_pos = n_pos / total * 100 if total else 0
     pct_int = n_internos_pos / n_pos * 100 if n_pos else 0
+    pct_interno = n_interno / total * 100 if total else 0
+    pct_denuncia = n_denuncia / total * 100 if total else 0
 
-    story.append(Paragraph('Métricas Gerais', styles['h2']))
-    story.append(Spacer(1, 4))
-    story.append(Paragraph(
-        'Resumo quantitativo dos protocolos no período e filtros selecionados.', ESTILO_LEGENDA
-    ))
-    linhas_metricas = [
-        ['Total de Protocolos', 'Positivos vs Total', 'Internos vs Positivos'],
-        [
-            f'{total:,}',
-            f'{n_pos:,}  ({pct_pos:.1f}%)',
-            f'{n_internos_pos:,}  ({pct_int:.1f}%)',
-        ],
+    _METRICAS_DISPONIVEIS = {
+        'Total de Protocolos':   {'label': 'Total de Protocolos',   'valor': f'{total:,}',              'delta': None},
+        'Positivos vs Total':    {'label': 'Positivos vs Total',    'valor': f'{n_pos:,}',              'delta': f'{pct_pos:.1f}% do total'},
+        'Internos vs Positivos': {'label': 'Internos vs Positivos', 'valor': f'{n_internos_pos:,}',     'delta': f'{pct_int:.1f}% dos positivos'},
+        'Investigações Internas':{'label': 'Inv. Internas',         'valor': f'{n_interno:,}',          'delta': f'{pct_interno:.1f}% do total'},
+        'Denúncias':             {'label': 'Denúncias',             'valor': f'{n_denuncia:,}',         'delta': f'{pct_denuncia:.1f}% do total'},
+        'Média por Dia':         {'label': 'Média por Dia',         'valor': f'{media_por_dia:.1f}',    'delta': 'casos/dia'},
+    }
+
+    itens_metricas = [
+        _METRICAS_DISPONIVEIS[m] for m in OPCOES_METRICAS if m in metricas_ativas
     ]
-    adicionar_tabela(story, linhas_metricas, [LARGURA_PAGINA / 3] * 3)
-    story.append(Spacer(1, 16))
+    if itens_metricas:
+        story.append(Paragraph('Métricas Gerais', styles['h2']))
+        story.append(Spacer(1, 4))
+        story.append(Paragraph(
+            'Resumo quantitativo dos protocolos no período e filtros selecionados.', ESTILO_LEGENDA
+        ))
+        story.extend(_metricas_como_cards(itens_metricas, LARGURA_PAGINA))
+        story.append(Spacer(1, 16))
 
     # -- Gráfico: Resultado -----------------------------------------------------
     if 'Resultado das Análises' in graficos_ativos:
@@ -300,11 +388,21 @@ def gerar_pdf_dashboard(
         story.extend(_grafico_resultado(df, LARGURA_PAGINA))
         story.append(Spacer(1, 16))
 
+    # -- Gráfico: Internos × Denúncias ------------------------------------------
+    if 'Internos × Denúncias' in graficos_ativos:
+        story.append(Paragraph('Internos × Denúncias', styles['h2']))
+        story.append(Paragraph(
+            'Distribuição percentual entre investigações internas e denúncias externas.',
+            ESTILO_LEGENDA,
+        ))
+        story.extend(_grafico_tipo(df, LARGURA_PAGINA))
+        story.append(Spacer(1, 16))
+
     # -- Gráfico: Categoria -----------------------------------------------------
     tem_categoria = 'Quantidade por Categoria' in graficos_ativos
     tem_tabela_cat = 'Tabela Resumo por Categoria' in graficos_ativos
-    if tem_categoria or tem_tabela_cat:
-        story.append(PageBreak())
+    # if tem_categoria or tem_tabela_cat:
+    #     story.append(PageBreak())
     if tem_categoria:
         story.append(Paragraph('Quantidade por Categoria', styles['h2']))
         story.append(Paragraph(

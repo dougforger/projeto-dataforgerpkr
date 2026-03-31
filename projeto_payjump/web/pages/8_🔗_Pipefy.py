@@ -1,5 +1,6 @@
 import datetime
 
+import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import streamlit as st
@@ -11,7 +12,7 @@ from utils.pipefy_db import (
     registrar_sincronizacao,
     sincronizar_cards,
 )
-from utils.pipefy_pdf import OPCOES_GRAFICOS, aplicar_fonte_mpl, gerar_pdf_dashboard
+from utils.pipefy_pdf import OPCOES_GRAFICOS, OPCOES_METRICAS, aplicar_fonte_mpl, gerar_pdf_dashboard
 
 # -----------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA
@@ -172,14 +173,25 @@ with col_dashboard:
     n_internos_pos = (
         (df['tipo'] == 'Investigação interna') & (df['resultado'] == 'Positivo')
     ).sum()
+    n_interno = (df['tipo'] == 'Investigação interna').sum()
+    n_denuncia = (df['tipo'] == 'Denúncia').sum()
+    period_days = max(1, (data_final - data_inicial).days + 1)
+    media_por_dia = total / period_days
     pct_pos = n_pos / total * 100 if total else 0
     pct_int = n_internos_pos / n_pos * 100 if n_pos else 0
+    pct_interno = n_interno / total * 100 if total else 0
+    pct_denuncia = n_denuncia / total * 100 if total else 0
 
     st.markdown('#### 📊 Dashboard')
     m1, m2, m3 = st.columns(3)
     m1.metric('Total de Protocolos', f'{total:,}')
     m2.metric('Positivos vs Total', f'{n_pos:,}', f'{pct_pos:.1f}%', delta_color='off', delta_arrow='off')
     m3.metric('Internos vs Positivos', f'{n_internos_pos:,}', f'{pct_int:.1f}%', delta_color='off', delta_arrow='off')
+
+    m4, m5, m6 = st.columns(3)
+    m4.metric('Investigações Internas', f'{n_interno:,}', f'{pct_interno:.1f}% do total', delta_color='off', delta_arrow='off')
+    m5.metric('Denúncias', f'{n_denuncia:,}', f'{pct_denuncia:.1f}% do total', delta_color='off', delta_arrow='off')
+    m6.metric('Média por Dia', f'{media_por_dia:.1f}', 'casos/dia', delta_color='off', delta_arrow='off')
 
     st.markdown('---')
 
@@ -208,6 +220,27 @@ with col_dashboard:
     fig_res.tight_layout()
     st.pyplot(fig_res, width='stretch')
     plt.close(fig_res)
+
+    # -- Gráfico: Internos × Denúncias ------------------------------------------
+    fig_tipo, ax_tipo = plt.subplots(figsize=(12, 2))
+    ax_tipo.barh([''], [pct_denuncia], color='#95A5A6', label=f'Denúncias  ({n_denuncia:,})')
+    ax_tipo.barh([''], [pct_interno], left=[pct_denuncia], color='#F0A64D', label=f'Investigações Internas  ({n_interno:,})')
+    if pct_denuncia > 5:
+        ax_tipo.text(pct_denuncia / 2, 0, f'{pct_denuncia:.1f}%',
+                     ha='center', va='center', color='white', fontsize=13, fontweight='bold')
+    if pct_interno > 5:
+        ax_tipo.text(pct_denuncia + pct_interno / 2, 0, f'{pct_interno:.1f}%',
+                     ha='center', va='center', color='white', fontsize=13, fontweight='bold')
+    ax_tipo.set_xlim(0, 100)
+    ax_tipo.set_xlabel('%')
+    ax_tipo.set_yticklabels([])
+    ax_tipo.tick_params(left=False)
+    ax_tipo.set_title('Internos × Denúncias', fontsize=13, fontweight='bold', loc='left', pad=12)
+    ax_tipo.legend(loc='lower center', bbox_to_anchor=(0.5, 1.08), ncol=2, frameon=False)
+    ax_tipo.spines[['top', 'right', 'left']].set_visible(False)
+    fig_tipo.tight_layout()
+    st.pyplot(fig_tipo, width='stretch')
+    plt.close(fig_tipo)
 
     # -- Gráfico 2: Por Categoria (stacked positivo/negativo) -------------------
     cat_res = df.groupby('categoria')['resultado'].value_counts().unstack(fill_value=0)
@@ -278,14 +311,49 @@ with col_dashboard:
     st.pyplot(fig_ana, width='stretch')
     plt.close(fig_ana)
 
+    # -- Produtividade 12/36 (expander fechado) -----------------------------------
+    # Usa str.contains() com substring única para resistir a variações de nome no banco.
+    _ANALISTAS_12_36 = [
+        ('Eduardo Da Silva',  'Eduardo'),
+        ('Luiz Benedito',     'Luiz'),
+        ('Thiago Reis',       'Thiago'),
+        ('José Aureomar',     'José'),
+    ]
+    with st.expander('⏱️ Produtividade por Analista (regime 12/36)', expanded=False):
+        horas_plantao = period_days * 6  # 12 h a cada 48 h = 6 h/dia em média
+        rows_prod = []
+        for nome_display, match_str in _ANALISTAS_12_36:
+            n_casos = int(df['analista'].str.contains(match_str, na=False, case=False).sum())
+            horas_por_caso = horas_plantao / n_casos if n_casos > 0 else None
+            rows_prod.append({
+                'Analista': nome_display,
+                'Casos no período': n_casos,
+                'Horas de plantão (est.)': horas_plantao,
+                'Horas por caso': round(horas_por_caso, 2) if horas_por_caso is not None else '—',
+            })
+        st.caption(
+            f'Estimativa baseada em {period_days} dia(s) × 6 h/dia (regime 12/36). '
+            'Filtros de categoria, tipo, resultado e analista são aplicados.'
+        )
+        st.dataframe(pd.DataFrame(rows_prod), hide_index=True, use_container_width=True)
+
     # -- Export PDF -------------------------------------------------------------
     st.markdown('---')
-    graficos_pdf = st.multiselect(
-        'Gráficos a incluir no PDF:',
-        OPCOES_GRAFICOS,
-        default=OPCOES_GRAFICOS,
-        key='graficos-pdf',
-    )
+    col_sel1, col_sel2 = st.columns(2)
+    with col_sel1:
+        metricas_pdf = st.multiselect(
+            'Métricas a incluir no PDF:',
+            OPCOES_METRICAS,
+            default=OPCOES_METRICAS,
+            key='metricas-pdf',
+        )
+    with col_sel2:
+        graficos_pdf = st.multiselect(
+            'Gráficos a incluir no PDF:',
+            OPCOES_GRAFICOS,
+            default=OPCOES_GRAFICOS,
+            key='graficos-pdf',
+        )
     if st.button('📄 Exportar PDF', use_container_width=False):
         with st.spinner('Gerando PDF...'):
             filtros = {
@@ -300,7 +368,7 @@ with col_dashboard:
                 'ref_resultados': RESULTADOS,
                 'ref_analistas': ANALISTAS,
             }
-            pdf_bytes = gerar_pdf_dashboard(df, filtros, graficos=graficos_pdf)
+            pdf_bytes = gerar_pdf_dashboard(df, filtros, graficos=graficos_pdf, metricas=metricas_pdf)
         nome_arquivo = f'Relatório_Security_PKR_{data_inicial}_{data_final}.pdf'
         st.download_button(
             label='⬇️ Baixar PDF',
