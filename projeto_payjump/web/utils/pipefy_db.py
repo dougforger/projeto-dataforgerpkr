@@ -90,16 +90,38 @@ _LOTE = 500  # máximo de registros por requisição de upsert
 
 # ── API pública ────────────────────────────────────────────────────────────────
 
+def _supabase_paginar(client, tabela: str, colunas: str = '*') -> list:
+    """Lê todos os registros de uma tabela Supabase paginando de 1.000 em 1.000.
+
+    O PostgREST limita cada requisição a 1.000 linhas por padrão.
+    """
+    todos: list = []
+    inicio = 0
+    while True:
+        resp = (
+            client.table(tabela)
+            .select(colunas)
+            .range(inicio, inicio + _LOTE - 1)
+            .execute()
+        )
+        lote = resp.data or []
+        todos.extend(lote)
+        if len(lote) < _LOTE:
+            break
+        inicio += _LOTE
+    return todos
+
+
 def carregar_cards() -> pd.DataFrame:
     """Retorna todos os cards do banco como DataFrame."""
     _colunas = ['id', 'criado_em', 'categoria', 'tipo', 'resultado', 'analista']
 
     if _usar_supabase():
         client = _supabase_client()
-        resp = client.table('pipefy_cards').select('*').execute()
-        if not resp.data:
+        dados = _supabase_paginar(client, 'pipefy_cards')
+        if not dados:
             return pd.DataFrame(columns=_colunas)
-        df = pd.DataFrame(resp.data)[_colunas]
+        df = pd.DataFrame(dados)[_colunas]
         df['criado_em'] = pd.to_datetime(df['criado_em']).dt.date
         return df
 
@@ -138,8 +160,7 @@ def sincronizar_cards(df: pd.DataFrame) -> tuple[int, int]:
     if _usar_supabase():
         client = _supabase_client()
         # Conta existentes antes do upsert para calcular inseridos vs atualizados
-        resp_ids = client.table('pipefy_cards').select('id').execute()
-        ids_existentes = {r['id'] for r in resp_ids.data}
+        ids_existentes = {r['id'] for r in _supabase_paginar(client, 'pipefy_cards', 'id')}
         inseridos   = len(set(df['id'].astype(str)) - ids_existentes)
         atualizados = len(df) - inseridos
         # Upsert em lotes
