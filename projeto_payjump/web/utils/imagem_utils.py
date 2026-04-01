@@ -1,6 +1,9 @@
 from io import BytesIO
 from pathlib import Path
 
+import matplotlib
+matplotlib.rcParams['text.parse_math'] = False  # Desabilita parsing de mathtext ($...$)
+
 import matplotlib.font_manager as font_manager
 import matplotlib.pyplot as plt
 import pandas as pd
