@@ -1,5 +1,4 @@
 import pandas as pd
-from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import Paragraph, Spacer
 
 from .analise_geo import _encontrar_ids_compartilhados, gerar_elementos_mapa_pdf
@@ -12,6 +11,7 @@ from .pdf_builder import (
     montar_tabela_comuns,
 )
 from .pdf_config import (
+    ESTILO_CELULA_COMPACTO,
     ESTILO_LEGENDA,
     LIMITE_MODALIDADE_CASH,
     MULTIPLICADOR_MOEDA,
@@ -212,9 +212,6 @@ def gerar_pdf_snowflake(
     story.append(Paragraph('Dispositivos', styles['Heading1']))
     story.append(Spacer(1, 6))
 
-    # estilo_wrap é necessário aqui porque o código do dispositivo pode ser muito longo
-    # e precisa de quebra de linha automática dentro da célula da tabela
-    estilo_wrap = ParagraphStyle('wrap', parent=styles['Normal'], wordWrap='LTR', fontSize=8)
 
     cabecalhos_disp = ['Jogador', 'Cód. Dispositivo', 'Dispositivo', 'Sistema']
     linhas_disp     = [cabecalhos_disp]
@@ -224,7 +221,7 @@ def gerar_pdf_snowflake(
         codigo_str = str(row['CODIGO_DISPOSITIVO'])
         linhas_disp.append([
             conta,
-            Paragraph(codigo_str, estilo_wrap),   # Paragraph para habilitar word wrap
+            Paragraph(codigo_str, ESTILO_CELULA_COMPACTO),   # Paragraph para habilitar word wrap
             str(row['DISPOSITIVO']),
             str(row['SISTEMA']),
         ])

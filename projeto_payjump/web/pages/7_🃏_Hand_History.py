@@ -14,7 +14,6 @@ import streamlit as st
 
 from utils.hand_history_parser import (
     _aplicar_emoji_naipes,
-    _fmt_br,
     _formatar_jogador,
     coletar_jogadores,
     gerar_pdf_hand_history,
@@ -22,6 +21,7 @@ from utils.hand_history_parser import (
     parse_arquivo_html,
     renderizar_cartas,
 )
+from utils.pdf_config import fmt_br as _fmt_br
 
 st.set_page_config(
     page_title='Hand History Viewer',

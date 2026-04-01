@@ -1,6 +1,13 @@
 import html
 import re
+from datetime import date
 from pathlib import Path
+
+import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import font_manager as _mpl_font_manager
+from matplotlib.font_manager import FontProperties
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
@@ -249,6 +256,120 @@ ESTILO_CABECALHO_CELULA_NOWRAP = ParagraphStyle(
 )
 
 LOGO_DEITADO = ImageReader(BASE_DIR / 'img' / 'LOGO PRETO DEITADO.png')
+
+# -----------------------------------------------------
+# MATPLOTLIB — FontProperties e cores hex
+# Usados por qualquer módulo que gere figuras matplotlib
+# (despesas_pdf, analise_geo, etc.)
+# -----------------------------------------------------
+_FP_LIGHT_PATH = FONT_DIR / 'calibril.ttf'
+_FP_BOLD_PATH  = FONT_DIR / 'calibrib.ttf'
+
+for _fp in (_FP_LIGHT_PATH, _FP_BOLD_PATH):
+    if _fp.exists():
+        _mpl_font_manager.fontManager.addfont(str(_fp))
+
+FP_LIGHT_9  = FontProperties(fname=str(_FP_LIGHT_PATH), size=9)  if _FP_LIGHT_PATH.exists() else None
+FP_LIGHT_11 = FontProperties(fname=str(_FP_LIGHT_PATH), size=11) if _FP_LIGHT_PATH.exists() else None
+FP_LIGHT_13 = FontProperties(fname=str(_FP_LIGHT_PATH), size=13) if _FP_LIGHT_PATH.exists() else None
+FP_BOLD_14  = FontProperties(fname=str(_FP_BOLD_PATH),  size=14) if _FP_BOLD_PATH.exists()  else None
+FP_BOLD_24  = FontProperties(fname=str(_FP_BOLD_PATH),  size=24) if _FP_BOLD_PATH.exists()  else None
+
+# Hex strings para matplotlib (mesmos valores da paleta ReportLab acima)
+COR_DESTAQUE_HEX        = '#F0A64D'
+COR_DESTAQUE_ESCURO_HEX = '#C47E20'
+COR_TEXTO_HEX           = '#1C1C1C'
+COR_TEXTO_SUAVE_HEX     = '#555555'
+COR_BORDA_HEX           = '#DDDDDD'
+# Cores específicas de gráficos financeiros
+COR_AZUL_CREDITO_HEX    = '#1F77B4'
+COR_VERMELHO_DEB_HEX    = '#D62728'
+
+# -----------------------------------------------------
+# ESTILOS EXTRAS
+# -----------------------------------------------------
+
+# Título de seção (equivalente a Heading2 com fonte institucional)
+ESTILO_SECAO = ParagraphStyle(
+    'secao_titulo',
+    parent=styles['Heading2'],
+    fontName=FONTE_NORMAL,
+    fontSize=12,
+    textColor=COR_TEXTO,
+    spaceBefore=10,
+    spaceAfter=4,
+)
+
+# Célula compacta com word-wrap — para colunas de conteúdo longo em tabelas densas
+ESTILO_CELULA_COMPACTO = ParagraphStyle(
+    'celula_compacto',
+    parent=ESTILO_CELULA,
+    fontSize=8,
+    leading=11,
+)
+
+# Tabela de índice navegável (usado no Hand History PDF)
+ESTILO_TABELA_INDICE = TableStyle([
+    ('SPAN',           (0, 0), (-1, 0)),
+    ('FONTNAME',       (0, 0), (-1, 0), FONTE_NEGRITO),
+    ('FONTSIZE',       (0, 0), (-1, 0), 10),
+    ('BACKGROUND',     (0, 0), (-1, 0), COR_DESTAQUE),
+    ('TEXTCOLOR',      (0, 0), (-1, 0), COR_TEXTO),
+    ('ALIGN',          (0, 0), (-1, 0), 'CENTER'),
+    ('LINEBELOW',      (0, 0), (-1, 0), 1.5, COR_DESTAQUE_ESCURO),
+    ('FONTNAME',       (0, 1), (-1, -1), FONTE_NORMAL),
+    ('FONTSIZE',       (0, 1), (-1, -1), 8),
+    ('TEXTCOLOR',      (0, 1), (-1, -1), COR_TEXTO),
+    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [COR_DESTAQUE_CLARO, COR_DESTAQUE_CLARO]),
+    ('ALIGN',          (0, 1), (-1, -1), 'CENTER'),
+    ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
+    ('LEFTPADDING',    (0, 0), (-1, -1), 6),
+    ('RIGHTPADDING',   (0, 0), (-1, -1), 6),
+    ('TOPPADDING',     (0, 0), (-1, -1), 4),
+    ('BOTTOMPADDING',  (0, 0), (-1, -1), 4),
+    ('BOX',            (0, 0), (-1, -1), 0.75, COR_BORDA),
+    ('INNERGRID',      (0, 1), (-1, -1), 0.25, COR_BORDA),
+])
+
+# -----------------------------------------------------
+# FUNÇÕES DE FORMATAÇÃO
+# Centralizar aqui garante consistência em todos os PDFs
+# -----------------------------------------------------
+
+def formatar_brl(valor: float) -> str:
+    """Formata um número como moeda brasileira: R$ 1.234,56."""
+    return f'R$ {valor:,.2f}'.replace(',', 'X').replace('.', ',').replace('X', '.')
+
+
+def fmt_br(valor: float, decimais: int = 0, sinal: bool = False) -> str:
+    """Formata número no padrão brasileiro sem prefixo de moeda.
+
+    Exemplos:
+        fmt_br(1234.5)           → '1.234'
+        fmt_br(1234.5, 2)        → '1.234,50'
+        fmt_br(-50, sinal=True)  → '-50'
+        fmt_br(50, sinal=True)   → '+50'
+    """
+    fmt = f'{valor:+,.{decimais}f}' if sinal else f'{valor:,.{decimais}f}'
+    return fmt.replace(',', 'X').replace('.', ',').replace('X', '.')
+
+
+def formatar_data(valor) -> str:
+    """Retorna data no formato dd/mm/aaaa, ou '—' se ausente."""
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+        return '—'
+    if isinstance(valor, (date, pd.Timestamp)):
+        return pd.Timestamp(valor).strftime('%d/%m/%Y')
+    return str(valor)
+
+
+def texto_ou_traco(valor) -> str:
+    """Retorna o valor como string ou '—' se ausente/nulo."""
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+        return '—'
+    texto = str(valor).strip()
+    return texto if texto else '—'
+
 
 # -----------------------------------------------------
 # APIs EXTERNAS

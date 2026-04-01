@@ -5,26 +5,21 @@ ESTILO_LEGENDA, LOGO_DEITADO, ESTILO_TABELA). Sem código Streamlit.
 """
 import io
 import textwrap
-from pathlib import Path
 
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 from reportlab.lib.units import cm
-from reportlab.platypus import Image as RLImage, PageBreak, Paragraph, Spacer, Table
+from reportlab.platypus import Image as RLImage, Paragraph, Spacer, Table
 
 from .pdf_builder import adicionar_tabela, finalizar_pdf, inicializar_pdf
 from .pdf_config import (
+    COR_DESTAQUE_HEX,
     ESTILO_LEGENDA,
+    ESTILO_SECAO,
     ESTILO_TABELA,
     LARGURA_PAGINA,
-    styles,
 )
-
-_FONT_DIR = Path(__file__).resolve().parent.parent / 'fonts'
 
 OPCOES_GRAFICOS = [
     'Resultado das Análises',
@@ -43,24 +38,9 @@ OPCOES_METRICAS = [
     'Média por Dia',
 ]
 
-# Cores institucionais dos gráficos (alinhadas com a página)
+# Cores institucionais dos gráficos
 _COR_NEGATIVO = '#95A5A6'   # cinza neutro — sem infração confirmada
-_COR_POSITIVO = '#F0A64D'   # âmbar Suprema — infração confirmada
 _COR_ANALISTA = '#8E44AD'
-
-
-def aplicar_fonte_mpl() -> None:
-    """Registra Calibri Light e define como fonte padrão do matplotlib."""
-    for ttf in ('calibril.ttf', 'calibrib.ttf', 'calibrili.ttf', 'calibriz.ttf'):
-        try:
-            fm.fontManager.addfont(str(_FONT_DIR / ttf))
-        except Exception:
-            pass
-    try:
-        nome = fm.FontProperties(fname=str(_FONT_DIR / 'calibril.ttf')).get_name()
-        plt.rcParams['font.family'] = nome
-    except Exception:
-        pass
 
 
 # -----------------------------------------------------
@@ -134,7 +114,7 @@ def _grafico_tipo(df: pd.DataFrame, largura: float) -> list:
 
     fig, ax = plt.subplots(figsize=(10, 1.4))
     ax.barh([''], [pct_denuncia], color=_COR_NEGATIVO, label=f'Denúncias ({n_denuncia:,})')
-    ax.barh([''], [pct_interno], left=[pct_denuncia], color=_COR_POSITIVO,
+    ax.barh([''], [pct_interno], left=[pct_denuncia], color=COR_DESTAQUE_HEX,
             label=f'Investigações Internas ({n_interno:,})')
 
     if pct_denuncia > 6:
@@ -165,7 +145,7 @@ def _grafico_resultado(df: pd.DataFrame, largura: float) -> list:
 
     fig, ax = plt.subplots(figsize=(10, 1.4))
     ax.barh([''], [pct_neg], color=_COR_NEGATIVO, label=f'Negativos ({n_neg:,})')
-    ax.barh([''], [pct_pos], left=[pct_neg], color=_COR_POSITIVO, label=f'Positivos ({n_pos:,})')
+    ax.barh([''], [pct_pos], left=[pct_neg], color=COR_DESTAQUE_HEX, label=f'Positivos ({n_pos:,})')
 
     if pct_neg > 6:
         ax.text(pct_neg / 2, 0, f'{pct_neg:.1f}%',
@@ -201,7 +181,7 @@ def _grafico_categoria(df: pd.DataFrame, largura: float) -> list:
     altura = max(2.5, len(cats) * 0.6)
     fig, ax = plt.subplots(figsize=(10, altura))
     ax.barh(cats, neg_vals, color=_COR_NEGATIVO, label='Negativos')
-    ax.barh(cats, pos_vals, left=neg_vals, color=_COR_POSITIVO, label='Positivos')
+    ax.barh(cats, pos_vals, left=neg_vals, color=COR_DESTAQUE_HEX, label='Positivos')
 
     grand_total = sum(neg_vals) + sum(pos_vals)
     max_x = max((n + p) for n, p in zip(neg_vals, pos_vals)) if cats else 1
@@ -272,7 +252,7 @@ def _grafico_analista(df: pd.DataFrame, largura: float) -> list:
 
     altura = max(2.5, len(analistas) * 0.55)
     fig, ax = plt.subplots(figsize=(10, altura))
-    bars = ax.barh(analistas, vals, color=_COR_POSITIVO)
+    bars = ax.barh(analistas, vals, color=COR_DESTAQUE_HEX)
 
     for bar, val in zip(bars, vals):
         ax.text(bar.get_width() + 0.2, bar.get_y() + bar.get_height() / 2,
@@ -313,7 +293,6 @@ def gerar_pdf_dashboard(
     graficos_ativos = set(graficos if graficos is not None else OPCOES_GRAFICOS)
     metricas_ativas = set(metricas if metricas is not None else OPCOES_METRICAS)
     sns.set_theme(style='whitegrid', font_scale=1.0)
-    aplicar_fonte_mpl()
 
     buffer, doc, story = inicializar_pdf(
         protocolo='',
@@ -321,7 +300,7 @@ def gerar_pdf_dashboard(
     )
 
     # -- Seção de filtros -------------------------------------------------------
-    story.append(Paragraph('Filtros Aplicados', styles['h2']))
+    story.append(Paragraph('Filtros Aplicados', ESTILO_SECAO))
     story.append(Spacer(1, 4))
     story.append(Paragraph(
         'Parâmetros utilizados para a geração deste relatório.', ESTILO_LEGENDA
@@ -370,7 +349,7 @@ def gerar_pdf_dashboard(
         _METRICAS_DISPONIVEIS[m] for m in OPCOES_METRICAS if m in metricas_ativas
     ]
     if itens_metricas:
-        story.append(Paragraph('Métricas Gerais', styles['h2']))
+        story.append(Paragraph('Métricas Gerais', ESTILO_SECAO))
         story.append(Spacer(1, 4))
         story.append(Paragraph(
             'Resumo quantitativo dos protocolos no período e filtros selecionados.', ESTILO_LEGENDA
@@ -380,7 +359,7 @@ def gerar_pdf_dashboard(
 
     # -- Gráfico: Resultado -----------------------------------------------------
     if 'Resultado das Análises' in graficos_ativos:
-        story.append(Paragraph('Resultado das Análises', styles['h2']))
+        story.append(Paragraph('Resultado das Análises', ESTILO_SECAO))
         story.append(Paragraph(
             'Distribuição percentual entre análises com resultado Negativo e Positivo.',
             ESTILO_LEGENDA,
@@ -390,7 +369,7 @@ def gerar_pdf_dashboard(
 
     # -- Gráfico: Internos × Denúncias ------------------------------------------
     if 'Internos × Denúncias' in graficos_ativos:
-        story.append(Paragraph('Internos × Denúncias', styles['h2']))
+        story.append(Paragraph('Internos × Denúncias', ESTILO_SECAO))
         story.append(Paragraph(
             'Distribuição percentual entre investigações internas e denúncias externas.',
             ESTILO_LEGENDA,
@@ -404,7 +383,7 @@ def gerar_pdf_dashboard(
     # if tem_categoria or tem_tabela_cat:
     #     story.append(PageBreak())
     if tem_categoria:
-        story.append(Paragraph('Quantidade por Categoria', styles['h2']))
+        story.append(Paragraph('Quantidade por Categoria', ESTILO_SECAO))
         story.append(Paragraph(
             'Distribuição dos protocolos por categoria de infração analisada, ordenada por volume.',
             ESTILO_LEGENDA,
@@ -412,7 +391,7 @@ def gerar_pdf_dashboard(
         story.extend(_grafico_categoria(df, LARGURA_PAGINA))
         story.append(Spacer(1, 16))
     if tem_tabela_cat:
-        story.append(Paragraph('Detalhamento por Categoria', styles['h2']))
+        story.append(Paragraph('Detalhamento por Categoria', ESTILO_SECAO))
         story.append(Paragraph(
             'Resumo quantitativo por categoria: negativos, positivos, total e participação percentual.',
             ESTILO_LEGENDA,
@@ -422,7 +401,7 @@ def gerar_pdf_dashboard(
 
     # -- Gráfico: Analista ------------------------------------------------------
     if 'Quantidade por Analista' in graficos_ativos:
-        story.append(Paragraph('Quantidade por Analista', styles['h2']))
+        story.append(Paragraph('Quantidade por Analista', ESTILO_SECAO))
         story.append(Paragraph(
             'Quantidade de protocolos atribuídos por analista no período selecionado.',
             ESTILO_LEGENDA,

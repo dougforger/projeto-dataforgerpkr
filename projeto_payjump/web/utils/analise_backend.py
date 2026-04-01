@@ -8,7 +8,7 @@ from .pdf_builder import (
     inicializar_pdf,
     montar_tabela_comuns,
 )
-from .pdf_config import ESTILO_LEGENDA, ESTILO_PARAGRAFO, styles
+from .pdf_config import ESTILO_LEGENDA, ESTILO_PARAGRAFO, ESTILO_SECAO, styles
 
 
 # -----------------------------------------------------
@@ -258,7 +258,7 @@ def gerar_pdf(
     # --------------------------------------------------
     if torneio_selecionado is not None and resumo_torneio is not None and not resumo_torneio.empty:
         story.append(PageBreak())
-        story.append(Paragraph(f'Detalhamento do Torneio: {torneio_selecionado}', styles['Heading2']))
+        story.append(Paragraph(f'Detalhamento do Torneio: {torneio_selecionado}', ESTILO_SECAO))
         story.append(Spacer(1, 6))
 
         # Tabela de prêmios e KOs (5 colunas) + linha de total

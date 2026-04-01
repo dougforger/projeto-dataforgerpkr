@@ -12,7 +12,7 @@ from utils.pipefy_db import (
     registrar_sincronizacao,
     sincronizar_cards,
 )
-from utils.pipefy_pdf import OPCOES_GRAFICOS, OPCOES_METRICAS, aplicar_fonte_mpl, gerar_pdf_dashboard
+from utils.pipefy_pdf import OPCOES_GRAFICOS, OPCOES_METRICAS, gerar_pdf_dashboard
 
 # -----------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA
@@ -196,7 +196,6 @@ with col_dashboard:
     st.markdown('---')
 
     sns.set_theme(style='whitegrid', font_scale=1.05)
-    aplicar_fonte_mpl()
 
     # -- Gráfico 1: Negativo × Positivo ------------------------------------------
     pct_neg = n_neg / total * 100 if total else 0

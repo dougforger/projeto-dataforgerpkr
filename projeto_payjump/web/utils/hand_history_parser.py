@@ -17,7 +17,7 @@ import re
 
 import pandas as pd
 from bs4 import BeautifulSoup
-from reportlab.platypus import AnchorFlowable, PageBreak, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import AnchorFlowable, PageBreak, Paragraph, Spacer, Table
 
 from .pdf_builder import (
     adicionar_tabela,
@@ -26,10 +26,11 @@ from .pdf_builder import (
     inicializar_pdf,
 )
 from .pdf_config import (
-    ESTILO_CELULA, ESTILO_LEGENDA, ESTILO_PARAGRAFO, ESTILO_TABELA_COMPACTO,
+    ESTILO_CELULA, ESTILO_LEGENDA, ESTILO_PARAGRAFO, ESTILO_SECAO, ESTILO_TABELA_COMPACTO,
+    ESTILO_TABELA_INDICE,
     FONTE_NAIPES, FONTE_NEGRITO, FONTE_NORMAL,
     COR_DESTAQUE, COR_DESTAQUE_ESCURO, COR_TEXTO, COR_DESTAQUE_CLARO, COR_BORDA,
-    aplicar_fonte_naipes, styles,
+    aplicar_fonte_naipes, fmt_br, styles,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -45,24 +46,6 @@ CARTA_OCULTA = '🃏'
 # Mapeamento de símbolos de naipe para versão emoji (exibição Streamlit/HTML)
 # No PDF, os naipes são renderizados com a fonte SegoeUISymbol em vez de emojis
 _EMOJI_NAIPES = {'♠': '♠️', '♥': '♥️', '♦': '♦️', '♣': '♣️'}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# FORMATAÇÃO
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _fmt_br(valor: float, decimais: int = 0, sinal: bool = False) -> str:
-    """Formata número no padrão brasileiro: '.' para milhar, ',' para decimal.
-
-    Exemplos:
-        _fmt_br(1234.5)           → '1.234'
-        _fmt_br(1234.5, 2)        → '1.234,50'
-        _fmt_br(-50, sinal=True)  → '-50'
-        _fmt_br(50, sinal=True)   → '+50'
-    """
-    fmt = f'{valor:+,.{decimais}f}' if sinal else f'{valor:,.{decimais}f}'
-    # Troca vírgula ↔ ponto via caractere intermediário 'X' para evitar conflito
-    return fmt.replace(',', 'X').replace('.', ',').replace('X', '.')
 
 
 def _aplicar_emoji_naipes(texto: str) -> str:
@@ -564,29 +547,6 @@ def gerar_pdf_hand_history(
     # ── Índice de mãos ───────────────────────────────────────────────────────
     # 6 células por linha; primeira linha tem o título mesclado ocupando todas as colunas
     _COLS_INDICE = 6
-    _ESTILO_INDICE = TableStyle([
-        # Cabeçalho mesclado
-        ('SPAN',           (0, 0), (-1, 0)),
-        ('FONTNAME',       (0, 0), (-1, 0), FONTE_NEGRITO),
-        ('FONTSIZE',       (0, 0), (-1, 0), 10),
-        ('BACKGROUND',     (0, 0), (-1, 0), COR_DESTAQUE),
-        ('TEXTCOLOR',      (0, 0), (-1, 0), COR_TEXTO),
-        ('ALIGN',          (0, 0), (-1, 0), 'CENTER'),
-        ('LINEBELOW',      (0, 0), (-1, 0), 1.5, COR_DESTAQUE_ESCURO),
-        # Corpo (células de link)
-        ('FONTNAME',       (0, 1), (-1, -1), FONTE_NORMAL),
-        ('FONTSIZE',       (0, 1), (-1, -1), 8),
-        ('TEXTCOLOR',      (0, 1), (-1, -1), COR_TEXTO),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [COR_DESTAQUE_CLARO, COR_DESTAQUE_CLARO]),
-        ('ALIGN',          (0, 1), (-1, -1), 'CENTER'),
-        ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING',    (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING',   (0, 0), (-1, -1), 6),
-        ('TOPPADDING',     (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING',  (0, 0), (-1, -1), 4),
-        ('BOX',            (0, 0), (-1, -1), 0.75, COR_BORDA),
-        ('INNERGRID',      (0, 1), (-1, -1), 0.25, COR_BORDA),
-    ])
 
     # Monta linhas do índice agrupando 6 mãos por linha
     linhas_indice: list = [
@@ -614,7 +574,7 @@ def gerar_pdf_hand_history(
 
     larg_col = largura_util / _COLS_INDICE
     tabela_indice = Table(linhas_indice, colWidths=[larg_col] * _COLS_INDICE)
-    tabela_indice.setStyle(_ESTILO_INDICE)
+    tabela_indice.setStyle(ESTILO_TABELA_INDICE)
     story.append(tabela_indice)
     story.append(Spacer(1, 12))
     story.append(PageBreak())
@@ -642,8 +602,8 @@ def gerar_pdf_hand_history(
 
         # Título da mão
         story.append(Paragraph(
-            f'Mão #{hand_number} — {game_type} — {data_hora} — Blinds: {_fmt_br(blinds)}',
-            styles['Heading2'],
+            f'Mão #{hand_number} — {game_type} — {data_hora} — Blinds: {fmt_br(blinds)}',
+            ESTILO_SECAO,
         ))
         story.append(Paragraph(f'Hand ID: {hand_id}', ESTILO_LEGENDA))
         story.append(Spacer(1, 6))
@@ -674,8 +634,8 @@ def gerar_pdf_hand_history(
                         res = resultado_por_conta[iid]
                         cum = cumulativo_pdf[iid]
                         texto = (
-                            f"{_nome_base(jog['nome'])}: {_fmt_br(res, sinal=True)}"
-                            f"  ({_fmt_br(cum, sinal=True)})"
+                            f"{_nome_base(jog['nome'])}: {fmt_br(res, sinal=True)}"
+                            f"  ({fmt_br(cum, sinal=True)})"
                         )
                         story.append(Paragraph(texto, ESTILO_PARAGRAFO))
 
@@ -716,7 +676,7 @@ def gerar_pdf_hand_history(
 
             if rodada['pote_final']:
                 story.append(Paragraph(
-                    f'Pote ao final da rodada: {_fmt_br(rodada["pote_final"])}',
+                    f'Pote ao final da rodada: {fmt_br(rodada["pote_final"])}',
                     ESTILO_LEGENDA,
                 ))
 
@@ -727,7 +687,7 @@ def gerar_pdf_hand_history(
             if len(potes) > 1:
                 # Mostra identificação do pote quando há side pots
                 story.append(Paragraph(
-                    f'Pote {pote["numero"]} — Total: {_fmt_br(pote["valor_total"])}',
+                    f'Pote {pote["numero"]} — Total: {fmt_br(pote["valor_total"])}',
                     ESTILO_LEGENDA,
                 ))
 
@@ -741,10 +701,10 @@ def gerar_pdf_hand_history(
                 linhas_res.append([
                     jog['posicao'],
                     jog['nome'],
-                    _fmt_br(jog['resultado_liquido'], sinal=True),
-                    _fmt_br(jog['rake'], decimais=2),
-                    _fmt_br(jog['investido']),
-                    _fmt_br(jog['spoils']),
+                    fmt_br(jog['resultado_liquido'], sinal=True),
+                    fmt_br(jog['rake'], decimais=2),
+                    fmt_br(jog['investido']),
+                    fmt_br(jog['spoils']),
                     _cartas_para_pdf(jog['cartas'], revelar),
                     jog['winning_pattern'],
                 ])
