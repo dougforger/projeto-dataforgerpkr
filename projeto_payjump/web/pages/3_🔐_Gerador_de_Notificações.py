@@ -35,96 +35,13 @@ def carregar_dados() -> pd.DataFrame:
     return clubes
 
 lista_clubes = carregar_dados()
+data_hoje    = date.today().strftime('%d/%m/%Y')
 
 # ──────────────────────────────────────────────────────────────────────────────
-# HEADER DA PÁGINA
+# HEADER
 # ──────────────────────────────────────────────────────────────────────────────
 
 st.markdown('## 🔐 Notificações Security PKR')
-st.markdown('---')
-
-# ──────────────────────────────────────────────────────────────────────────────
-# BLOCO 1 — PROTOCOLO E CLUBE
-# ──────────────────────────────────────────────────────────────────────────────
-
-col1, col2 = st.columns(2)
-with col1:
-    protocolo_input = st.text_input(
-        label='Número do protocolo',
-        placeholder='1297462992',
-    )
-with col2:
-    clube_input = st.text_input(
-        label='ID do clube',
-        placeholder='123456',
-    )
-
-if protocolo_input and clube_input:
-    try:
-        protocolo = int(protocolo_input)
-        id_clube  = int(clube_input)
-
-        if id_clube not in lista_clubes.index:
-            st.error('❌ Clube não encontrado. Verifique o ID.')
-            st.stop()
-
-        st.session_state['clube']     = lista_clubes.loc[id_clube]
-        st.session_state['protocolo'] = protocolo
-
-    except ValueError:
-        st.error('❌ Protocolo e ID devem ser números inteiros.')
-        st.stop()
-
-if 'clube' not in st.session_state:
-    st.info('Preencha o protocolo e o ID do clube para continuar.')
-    st.stop()
-
-clube     = st.session_state['clube']
-protocolo = st.session_state['protocolo']
-idioma    = clube['idioma']
-data_hoje = date.today().strftime('%d/%m/%Y')
-
-# Info do clube (linha compacta abaixo dos inputs)
-ci1, ci2, ci3, ci4 = st.columns(4)
-ci1.metric('Clube',    f"{clube['clube_nome']} ({clube.name})")
-ci2.metric('Liga',     f"{clube['liga_nome']} ({clube['liga_id']})")
-ci3.metric('Idioma',   idioma.capitalize())
-ci4.metric('Data',     data_hoje)
-
-st.markdown('---')
-
-# ──────────────────────────────────────────────────────────────────────────────
-# SELETOR DE MODELO
-# ──────────────────────────────────────────────────────────────────────────────
-
-categorias = [m['categoria'] for m in MODELOS]
-categoria_sel = st.selectbox('Tipo de notificação', categorias, label_visibility='visible')
-
-modelo = next(m for m in MODELOS if m['categoria'] == categoria_sel)
-
-# dados_base disponíveis para interpolação no corpo (ex: {nome_clube} em Aliciamento)
-dados_base = {
-    'protocolo': protocolo,
-    'nome_clube': clube['clube_nome'],
-    'id_clube':   clube.name,
-    'nome_liga':  clube['liga_nome'],
-    'id_liga':    clube['liga_id'],
-    'data':       data_hoje,
-}
-
-# Monta o cabeçalho com o tipo correto para este modelo
-tipo_cabecalho = modelo.get('tipo_cabecalho', 'notificacao')
-cabecalho = '' if modelo.get('sem_cabecalho', False) else montar_cabecalho(
-    idioma=idioma,
-    protocolo=protocolo,
-    nome_clube=clube['clube_nome'],
-    id_clube=clube.name,
-    nome_liga=clube['liga_nome'],
-    id_liga=clube['liga_id'],
-    data=data_hoje,
-    tipo=tipo_cabecalho,
-)
-
 st.markdown('---')
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -133,18 +50,64 @@ st.markdown('---')
 
 col_form, col_preview = st.columns(2, gap='large')
 
-# ── COLUNA ESQUERDA: campos dinâmicos ────────────────────────────────────────
-
 with col_form:
-    st.markdown('#### Campos')
+
+    # ── 1. SELETOR DE TIPO ────────────────────────────────────────────────────
+
+    categorias    = [m['categoria'] for m in MODELOS]
+    categoria_sel = st.selectbox('Tipo de notificação', categorias)
+    modelo        = next(m for m in MODELOS if m['categoria'] == categoria_sel)
+    sem_cabecalho = modelo.get('sem_cabecalho', False)
+
+    st.markdown('---')
+
+    # ── 2. PROTOCOLO E CLUBE (apenas quando o modelo exige cabeçalho) ─────────
+
+    clube     = None
+    protocolo = None
+    idioma    = 'português'
+
+    if not sem_cabecalho:
+        c1, c2 = st.columns(2)
+        with c1:
+            protocolo_input = st.text_input('Número do protocolo', placeholder='1297462992')
+        with c2:
+            clube_input = st.text_input('ID do clube', placeholder='123456')
+
+        if protocolo_input and clube_input:
+            try:
+                protocolo = int(protocolo_input)
+                id_clube  = int(clube_input)
+
+                if id_clube not in lista_clubes.index:
+                    st.error('❌ Clube não encontrado. Verifique o ID.')
+                else:
+                    clube  = lista_clubes.loc[id_clube]
+                    idioma = clube['idioma']
+
+                    ci1, ci2, ci3, ci4 = st.columns(4)
+                    ci1.metric('Clube',  f"{clube['clube_nome']} ({clube.name})")
+                    ci2.metric('Liga',   f"{clube['liga_nome']} ({clube['liga_id']})")
+                    ci3.metric('Idioma', idioma.capitalize())
+                    ci4.metric('Data',   data_hoje)
+
+            except ValueError:
+                st.error('❌ Protocolo e ID devem ser números inteiros.')
+
+        elif protocolo_input or clube_input:
+            st.info('Preencha protocolo e ID do clube para continuar.')
+
+        st.markdown('---')
+
+    # ── 3. CAMPOS DINÂMICOS DO MODELO ─────────────────────────────────────────
 
     campos_preenchidos = {}
 
     if not modelo['campos']:
         st.info('Esta notificação não requer campos adicionais.')
     else:
+        st.markdown('#### Campos')
         for campo in modelo['campos']:
-            # Namespace no key para resetar ao trocar de modelo
             widget_key = f'{categoria_sel}__{campo["key"]}'
             label      = campo['label']
             tipo       = campo['tipo']
@@ -158,10 +121,35 @@ with col_form:
 
             campos_preenchidos[campo['key']] = valor
 
-# ── COLUNA DIREITA: prévia em tempo real ────────────────────────────────────
+# ── COLUNA DIREITA: apenas a prévia ──────────────────────────────────────────
 
 with col_preview:
     st.markdown('#### Prévia')
+
+    # Monta dados_base e cabeçalho (podem estar incompletos se clube não preenchido)
+    dados_base = {
+        'protocolo': protocolo or '',
+        'nome_clube': clube['clube_nome'] if clube is not None else '',
+        'id_clube':   clube.name          if clube is not None else '',
+        'nome_liga':  clube['liga_nome']  if clube is not None else '',
+        'id_liga':    clube['liga_id']    if clube is not None else '',
+        'data':       data_hoje,
+    }
+
+    if not sem_cabecalho:
+        tipo_cabecalho = modelo.get('tipo_cabecalho', 'notificacao')
+        cabecalho = montar_cabecalho(
+            idioma=idioma,
+            protocolo=dados_base['protocolo'],
+            nome_clube=dados_base['nome_clube'],
+            id_clube=dados_base['id_clube'],
+            nome_liga=dados_base['nome_liga'],
+            id_liga=dados_base['id_liga'],
+            data=data_hoje,
+            tipo=tipo_cabecalho,
+        )
+    else:
+        cabecalho = ''
 
     try:
         notificacao = montar_notificacao(
