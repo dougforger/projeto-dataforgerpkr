@@ -9,11 +9,8 @@ from matplotlib import font_manager
 from matplotlib.font_manager import FontProperties
 from matplotlib.patches import Rectangle
 
-from utils.despesas_db import (
-    carregar_despesas,
-    sincronizar_excel,
-    verificar_conexao,
-)
+from utils.despesas_db import carregar_despesas, sincronizar_excel
+from utils.supabase_client import exibir_status_conexao
 from utils.despesas_pdf import gerar_pdf_relatorio_financeiro
 
 _FONTS_DIR  = Path(__file__).parent.parent / 'fonts'
@@ -151,15 +148,8 @@ def _carregar_dados_supabase() -> pd.DataFrame:
 # ── Sidebar: sincronização e status ───────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown('### 💸 Security')
-    st.markdown('---')
-
     # Status da conexão
-    conexao_ok, mensagem_conexao = verificar_conexao()
-    if conexao_ok:
-        st.success('🟢 Supabase conectado')
-    else:
-        st.error(f'🔴 Sem conexão\n\n{mensagem_conexao}')
+    exibir_status_conexao()
 
     st.markdown('---')
     st.markdown('#### 📤 Sincronizar Excel')

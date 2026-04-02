@@ -4,6 +4,7 @@ from pathlib import Path
 import math
 
 from utils.arquivo_utils import carregar_xlsx
+from utils.clubes_db import carregar_clubes
 
 st.set_page_config(
     page_title = 'Calculadora de Payjump',
@@ -63,10 +64,7 @@ if uploaded_file is not None:
         df = df[colunas_uteis]
 
         # Carrega dados dos clubes
-        BASE_DIR = Path(__file__).resolve().parent.parent
-        DATA_DIR = BASE_DIR / 'data'
-
-        df_clubes = pd.read_csv(DATA_DIR / 'clubes.csv')
+        df_clubes = carregar_clubes()
 
         # Merge com os clubes
         df['Club ID'] = df['Club ID'].astype(int)

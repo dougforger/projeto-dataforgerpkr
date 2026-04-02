@@ -12,6 +12,8 @@ from utils.calculos import (
     gerar_pdf_pontual,
 )
 from utils.arquivo_utils import carregar_xlsx
+from utils.clubes_db import carregar_clubes
+from utils.ligas_db import carregar_ligas
 
 # ===== IMPORTS DO BANCO DE DADOS =====
 from utils.database import (
@@ -153,11 +155,8 @@ with tab_lote:
         st.markdown('---')
 
         # ===== CARREGAR INFORMAÇÕES DE CLUBES E LIGAS ======
-        BASE_DIR = Path(__file__).resolve().parent.parent
-        DATA_DIR = BASE_DIR / 'data'
-
-        df_clubes = pd.read_csv(DATA_DIR / 'clubes.csv')
-        df_ligas = pd.read_csv(DATA_DIR / 'ligas.csv')
+        df_clubes = carregar_clubes()
+        df_ligas = carregar_ligas()
 
         # ===== IDENTIFICAÇÃO DOS FRAUDADORES =====
         st.subheader('⚙️ Configuração dos Retidos por Fraudador')

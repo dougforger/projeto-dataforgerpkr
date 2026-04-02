@@ -6,6 +6,7 @@ import seaborn as sns
 import streamlit as st
 
 from utils.pipefy_api import buscar_contagem_cards, buscar_todos_os_cards, testar_conexao
+from utils.supabase_client import exibir_status_conexao
 from utils.pipefy_db import (
     carregar_cards as carregar_cards_db,
     obter_ultima_sincronizacao,
@@ -26,6 +27,10 @@ st.set_page_config(
 
 st.title('🔗 Pipefy — Security PKR')
 st.markdown('---')
+
+with st.sidebar:
+    exibir_status_conexao()
+    st.markdown('---')
 
 DATA_PRIMEIRO_CARD = datetime.date(2021, 10, 1)
 

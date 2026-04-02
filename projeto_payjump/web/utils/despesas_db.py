@@ -27,78 +27,22 @@ Notas de uso:
 from __future__ import annotations
 
 import datetime
-import io
 from typing import Optional
 
 import pandas as pd
+
+from utils.supabase_client import TAMANHO_LOTE, criar_cliente, paginar as _supabase_paginar, usar_supabase
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Constantes internas
 # ─────────────────────────────────────────────────────────────────────────────
 
 _NOME_TABELA_DESPESAS = 'security_despesas'
-_TAMANHO_LOTE         = 500   # registros por requisição de leitura / escrita
 
 # Colunas que o DataFrame de despesas deve ter para ser sincronizado.
 # As colunas opcionais (Categoria) recebem None quando ausentes no Excel.
 _COLUNAS_OBRIGATORIAS = {'Dia Fechamento', 'Valor'}
 _COLUNAS_ESPERADAS    = ['Protocolo', 'Data', 'Dia Fechamento', 'Clube', 'Liga', 'Valor', 'Categoria']
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Auxiliares de conexão
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _usar_supabase() -> bool:
-    """Retorna True quando SUPABASE_URL e SUPABASE_KEY estão em st.secrets."""
-    try:
-        import streamlit as st
-        url_configurada = st.secrets.get('SUPABASE_URL', '')
-        chave_configurada = st.secrets.get('SUPABASE_KEY', '')
-        return bool(url_configurada and chave_configurada)
-    except Exception:
-        return False
-
-
-def _criar_cliente_supabase():
-    """Cria e retorna o cliente Supabase via REST/HTTPS."""
-    import streamlit as st
-    from supabase import create_client
-    return create_client(st.secrets['SUPABASE_URL'], st.secrets['SUPABASE_KEY'])
-
-
-def _supabase_paginar(cliente, nome_tabela: str, colunas: str = '*') -> list[dict]:
-    """Lê todos os registros de uma tabela paginando de _TAMANHO_LOTE em _TAMANHO_LOTE.
-
-    O PostgREST limita cada resposta a 1.000 linhas por padrão. A paginação
-    garante que tabelas maiores sejam lidas integralmente.
-
-    Args:
-        cliente:      Cliente Supabase já inicializado.
-        nome_tabela:  Nome da tabela a ser consultada.
-        colunas:      Colunas a selecionar (padrão '*').
-
-    Returns:
-        Lista de dicionários com todos os registros.
-    """
-    todos_registros: list[dict] = []
-    indice_inicio = 0
-
-    while True:
-        resposta = (
-            cliente.table(nome_tabela)
-            .select(colunas)
-            .range(indice_inicio, indice_inicio + _TAMANHO_LOTE - 1)
-            .execute()
-        )
-        lote_atual = resposta.data or []
-        todos_registros.extend(lote_atual)
-
-        if len(lote_atual) < _TAMANHO_LOTE:
-            break   # última página
-        indice_inicio += _TAMANHO_LOTE
-
-    return todos_registros
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -119,13 +63,13 @@ def carregar_despesas() -> pd.DataFrame:
     Raises:
         RuntimeError: quando Supabase não está configurado em st.secrets.
     """
-    if not _usar_supabase():
+    if not usar_supabase():
         raise RuntimeError(
             'Supabase não configurado. Verifique SUPABASE_URL e SUPABASE_KEY '
             'em .streamlit/secrets.toml.'
         )
 
-    cliente = _criar_cliente_supabase()
+    cliente = criar_cliente()
     registros_brutos = _supabase_paginar(cliente, _NOME_TABELA_DESPESAS)
 
     if not registros_brutos:
@@ -179,7 +123,7 @@ def sincronizar_excel(df_excel: pd.DataFrame) -> tuple[int, int]:
         ValueError:   quando o DataFrame não contém as colunas obrigatórias.
         RuntimeError: quando Supabase não está configurado.
     """
-    if not _usar_supabase():
+    if not usar_supabase():
         raise RuntimeError(
             'Supabase não configurado. Verifique SUPABASE_URL e SUPABASE_KEY.'
         )
@@ -192,7 +136,7 @@ def sincronizar_excel(df_excel: pd.DataFrame) -> tuple[int, int]:
             f'Verifique se o arquivo correto foi enviado.'
         )
 
-    cliente = _criar_cliente_supabase()
+    cliente = criar_cliente()
 
     # Contar registros atuais antes de apagar
     registros_anteriores = _supabase_paginar(cliente, _NOME_TABELA_DESPESAS, 'id')
@@ -210,8 +154,8 @@ def sincronizar_excel(df_excel: pd.DataFrame) -> tuple[int, int]:
 
     # Inserir em lotes para respeitar limite do PostgREST
     total_inseridos = 0
-    for indice_inicio in range(0, len(lista_registros), _TAMANHO_LOTE):
-        lote = lista_registros[indice_inicio: indice_inicio + _TAMANHO_LOTE]
+    for indice_inicio in range(0, len(lista_registros), TAMANHO_LOTE):
+        lote = lista_registros[indice_inicio: indice_inicio + TAMANHO_LOTE]
         cliente.table(_NOME_TABELA_DESPESAS).insert(lote).execute()
         total_inseridos += len(lote)
 
@@ -271,21 +215,3 @@ def _converter_linha_para_dict(linha: pd.Series) -> dict:
         'valor':          _float_ou_none(linha.get('Valor')),
         'categoria':      _texto_ou_none(linha.get('Categoria')),
     }
-
-
-def verificar_conexao() -> tuple[bool, str]:
-    """Testa a conexão com o Supabase e retorna o status.
-
-    Returns:
-        Tupla (sucesso, mensagem) onde sucesso é True se a conexão
-        funcionou e mensagem descreve o resultado ou o erro.
-    """
-    if not _usar_supabase():
-        return False, 'SUPABASE_URL ou SUPABASE_KEY não configurados em st.secrets.'
-    try:
-        cliente = _criar_cliente_supabase()
-        # Tentativa de leitura de 1 registro para validar conexão
-        cliente.table(_NOME_TABELA_DESPESAS).select('id').limit(1).execute()
-        return True, 'Conexão com Supabase estabelecida com sucesso.'
-    except Exception as erro_conexao:
-        return False, f'Falha na conexão: {erro_conexao}'

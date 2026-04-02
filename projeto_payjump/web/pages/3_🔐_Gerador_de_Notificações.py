@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
-from pathlib import Path
 from datetime import date
+from utils.clubes_db import carregar_clubes
+from utils.ligas_db import carregar_ligas
 from src.modelos_notificacao import (
     CABECALHOS, MODELOS,
     montar_cabecalho, montar_notificacao,
@@ -17,17 +18,14 @@ st.set_page_config(
     layout='wide',
 )
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / 'data'
-
 # ──────────────────────────────────────────────────────────────────────────────
 # CARREGAMENTO DOS DADOS
 # ──────────────────────────────────────────────────────────────────────────────
 
 @st.cache_data
 def carregar_dados() -> pd.DataFrame:
-    clubes = pd.read_csv(DATA_DIR / 'clubes.csv')
-    ligas  = pd.read_csv(DATA_DIR / 'ligas.csv')
+    clubes = carregar_clubes()
+    ligas  = carregar_ligas()
 
     clubes['liga_id'] = clubes['liga_id'].astype(int)
     ligas['liga_id']  = ligas['liga_id'].astype(int)

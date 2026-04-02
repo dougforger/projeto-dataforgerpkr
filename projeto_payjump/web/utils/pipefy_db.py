@@ -68,49 +68,13 @@ def _new_session():
 
 # ── Supabase (Streamlit Cloud / local com secrets.toml) ───────────────────────
 
-def _usar_supabase() -> bool:
-    """True quando SUPABASE_URL e SUPABASE_KEY estão disponíveis em st.secrets."""
-    try:
-        import streamlit as st
-        url = st.secrets.get('SUPABASE_URL', '')
-        key = st.secrets.get('SUPABASE_KEY', '')
-        return bool(url and key)
-    except Exception:
-        return False
-
-
-def _supabase_client():
-    """Cria e retorna o cliente Supabase via REST (porta 443)."""
-    import streamlit as st
-    from supabase import create_client
-    return create_client(st.secrets['SUPABASE_URL'], st.secrets['SUPABASE_KEY'])
-
-
-_LOTE = 500  # máximo de registros por requisição de upsert
+from utils.supabase_client import TAMANHO_LOTE as _LOTE
+from utils.supabase_client import criar_cliente as _supabase_client
+from utils.supabase_client import paginar as _supabase_paginar
+from utils.supabase_client import usar_supabase as _usar_supabase
 
 
 # ── API pública ────────────────────────────────────────────────────────────────
-
-def _supabase_paginar(client, tabela: str, colunas: str = '*') -> list:
-    """Lê todos os registros de uma tabela Supabase paginando de 1.000 em 1.000.
-
-    O PostgREST limita cada requisição a 1.000 linhas por padrão.
-    """
-    todos: list = []
-    inicio = 0
-    while True:
-        resp = (
-            client.table(tabela)
-            .select(colunas)
-            .range(inicio, inicio + _LOTE - 1)
-            .execute()
-        )
-        lote = resp.data or []
-        todos.extend(lote)
-        if len(lote) < _LOTE:
-            break
-        inicio += _LOTE
-    return todos
 
 
 def carregar_cards() -> pd.DataFrame:

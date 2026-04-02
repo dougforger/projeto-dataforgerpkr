@@ -1,8 +1,9 @@
 import pandas as pd
 import streamlit as st
-from pathlib import Path
 
 from utils.arquivo_utils import carregar_xlsx
+from utils.clubes_db import carregar_clubes
+from utils.ligas_db import carregar_ligas
 from utils.analise_backend import analisar_cash, analisar_torneios, detalhar_torneio, gerar_pdf
 from utils.imagem_utils import gerar_imagem_df
 from utils.analise_snowflake import (
@@ -16,8 +17,6 @@ from utils.analise_snowflake import (
 from utils.geolocation import buscar_localizacao_ips, buscar_geocodificacao_reversa
 from utils.mapa_utils import exibir_mapa_folium
 from utils.pdf_config import MULTIPLICADOR_MOEDA
-
-BASE_DIR = Path(__file__).resolve().parent.parent
 
 # -----------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA
@@ -112,7 +111,7 @@ with aba_backend:
         df_backend = df_backend[colunas_uteis].copy()
 
         # Conversão para R$: (moeda local / handicap) * 5
-        df_ligas_map = pd.read_csv(BASE_DIR / 'data' / 'ligas.csv')[['liga_id', 'handicap']]
+        df_ligas_map = carregar_ligas()[['liga_id', 'handicap']]
         df_ligas_map['liga_id'] = df_ligas_map['liga_id'].astype(int)
         df_ligas_map['handicap'] = df_ligas_map['handicap'].astype(float)
         df_backend['Union ID']  = df_backend['Union ID'].astype(int)
@@ -348,8 +347,8 @@ with aba_snowflake:
 
     if upload_file is not None:
         df_bruto  = carregar_dados(upload_file)
-        df_clubes = pd.read_csv(BASE_DIR / 'data' / 'clubes.csv')
-        df_ligas  = pd.read_csv(BASE_DIR / 'data' / 'ligas.csv')
+        df_clubes = carregar_clubes()
+        df_ligas  = carregar_ligas()
 
         df_processado, qtd_removidas = preprocessar_dados(df_bruto, df_clubes, df_ligas)
         st.session_state.df_snowflake = df_processado
