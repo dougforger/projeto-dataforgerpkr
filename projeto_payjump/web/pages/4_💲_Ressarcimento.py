@@ -16,7 +16,7 @@ from utils.clubes_db import carregar_clubes
 from utils.ligas_db import carregar_ligas
 
 # ===== IMPORTS DO BANCO DE DADOS =====
-from utils.database import (
+from utils.ressarcimento_db import (
     # Fraudadores
     get_ids_fraudadores,
     get_fraudadores_completo,
@@ -30,7 +30,7 @@ from utils.database import (
     # Acumulados
     get_acumulados,
     atualizar_acumulados,
-    get_estatisticas_acumulados
+    get_estatisticas_acumulados,
 )
 
 st.set_page_config(
@@ -778,7 +778,7 @@ with tab_lote:
                             resultados_salvamento['acumulados'] = count
                         else:
                             # Se não houver acumulados novos, limpar tabela
-                            from utils.database import limpar_acumulados
+                            from utils.ressarcimento_db import limpar_acumulados
                             limpar_acumulados()
                             resultados_salvamento['acumulados'] = 0
 
