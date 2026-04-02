@@ -39,7 +39,7 @@ Cálculo e distribuição de ressarcimentos para vítimas de contas fraudulentas
 
 **Recursos:**
 - Upload de CSV exportado do Snowflake
-- Registro de fraudadores em banco de dados interno (SQLite)
+- Registro de fraudadores em banco de dados (Supabase ou SQLite local)
 - Cálculo do saldo líquido proporcional por vítima
 - Separação automática entre pagamentos imediatos, acumulados e futuros
 - Exportação Excel com múltiplas abas
@@ -90,7 +90,7 @@ Geração de notificações multilíngues para envio aos jogadores afetados por 
 - Merge automático com dados de clube e liga para personalização
 - Integração com cadastro de ligas e idiomas
 
-**Fonte de dados:** `data/clubes.csv` · `data/ligas.csv`
+**Fonte de dados:** Supabase (tabelas `clubes` e `ligas`)
 ''')
 
     st.markdown('''#### 🃏 Hand History Viewer
@@ -106,6 +106,43 @@ Visualizador de histórico de mãos exportado do backend com filtros interativos
 - Exportação em PDF com índice navegável e links internos
 
 **Fonte de dados:** Hand History HTML exportado do backend
+''')
+
+    st.markdown('''#### 💵 Despesas Security
+Controle de despesas operacionais do time de segurança, sincronizado com o Supabase.
+
+**Recursos:**
+- Upload do Excel de despesas para sincronização completa com o banco
+- Filtros por período, clube, liga e categoria
+- Gráficos de evolução e distribuição por categoria
+- Exportação em PDF do relatório financeiro
+
+**Fonte de dados:** Excel de despesas · Supabase (`security_despesas`)
+''')
+
+    st.markdown('''#### 🔗 Pipefy
+Dashboard de protocolos do time de segurança sincronizados do Pipefy.
+
+**Recursos:**
+- Sincronização de cards do Pipefy via API (com barra de progresso)
+- Filtros por data, categoria, tipo, resultado e analista
+- Métricas e gráficos de distribuição
+- Análise de produtividade por analista (regime 12/36)
+- Exportação em PDF do dashboard
+
+**Fonte de dados:** API Pipefy · Supabase (`pipefy_cards`, `pipefy_sync`)
+''')
+
+    st.markdown('''#### ⚙️ Banco de Dados
+Gerenciamento das tabelas de clubes e ligas no Supabase.
+
+**Recursos:**
+- Upload da planilha de clubes exportada pelo sistema para sincronização
+- Sincronização de ligas a partir do `ligas.csv`
+- Adição e atualização manual de ligas
+- Visualização dos registros com filtros
+
+**Fonte de dados:** Planilha de clubes do sistema · Supabase (`clubes`, `ligas`)
 ''')
 
 st.markdown('---')

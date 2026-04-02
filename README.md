@@ -1,8 +1,8 @@
 # Doug Forger PKR — Sistema de Análise e Segurança
 
-![Versão](https://img.shields.io/badge/version-3.0-blue)
+![Versão](https://img.shields.io/badge/version-4.0-blue)
 
-Sistema de integridade e análise de dados para a plataforma Suprema Poker. Reúne ferramentas de detecção de conluio, ressarcimento de vítimas, análise geográfica, visualização de hand history e distribuição de premiação em torneios.
+Sistema de integridade e análise de dados para a plataforma Suprema Poker. Reúne ferramentas de detecção de conluio, ressarcimento de vítimas, análise geográfica, visualização de hand history, distribuição de premiação em torneios, controle de despesas e gestão de protocolos do Pipefy.
 
 ---
 
@@ -18,6 +18,17 @@ uv run streamlit run início.py
 > Streamlit Cloud ainda usa `requirements.txt` (mantido em paralelo).
 > Ao adicionar uma dependência: `uv add <pacote>` e depois
 > `uv export --no-hashes -o requirements.txt`.
+
+### Configuração do Supabase
+
+Crie o arquivo `.streamlit/secrets.toml` com as credenciais:
+
+```toml
+SUPABASE_URL = "https://<projeto>.supabase.co"
+SUPABASE_KEY = "<service_role_key>"
+```
+
+Execute `data/supabase_setup.sql` uma vez no SQL Editor do Supabase para criar todas as tabelas. Sem as credenciais, os módulos com fallback (Pipefy, Ressarcimento, Clubes, Ligas) usam SQLite/CSV automaticamente.
 
 ### Ferramentas CLI
 
@@ -62,7 +73,7 @@ Detecção de conluio e padrões suspeitos a partir de dados do backend ou do Sn
 
 **Aba Snowflake** (upload CSV exportado do Snowflake):
 - Upload único de CSV com dados de mãos
-- Merge automático com cadastros de clubes e ligas
+- Merge automático com cadastros de clubes e ligas (Supabase ou CSV fallback)
 - Aplicação de multiplicador de moeda por liga
 - Filtragem automática de linhas de torneio (ID_MODALIDADE ≥ 100)
 - Resumo dos jogadores: ID, nome, clube, total de mesas, ganhos e rake
@@ -71,7 +82,6 @@ Detecção de conluio e padrões suspeitos a partir de dados do backend ou do Sn
 - Geolocalização de IPs via ip-api.com com cache por sessão
 - Geocodificação reversa de coordenadas GPS via OpenStreetMap Nominatim
 - Alertas automáticos de compartilhamento (dispositivos, IPs, cidades)
-- Detalhamento por mesa: ganhos, rake e histórico de mãos por jogador
 - Exportação de relatório em PDF com protocolo e legendas explicativas
 
 ---
@@ -81,10 +91,9 @@ Detecção de conluio e padrões suspeitos a partir de dados do backend ou do Sn
 Calculadora de ressarcimentos para torneios com reentrada, baseada na distribuição proporcional de KOs.
 
 - Upload de arquivo XLSX "MTT Player List" exportado do backend
-- Validação do nome do arquivo
 - Correção automática de XLSX malformados (fix no `styles.xml`)
 - Exibição da lista completa de jogadores, ranks e prêmios
-- Merge automático com `data/clubes.csv` para identificação de clube
+- Merge automático com cadastro de clubes (Supabase ou CSV fallback)
 - Distribuição proporcional de KOs entre os jogadores
 - Geração de strings formatadas para inserção no sistema
 
@@ -99,7 +108,7 @@ Geração de notificações multilíngues para envio aos jogadores afetados por 
 - Suporte previsto a português, inglês e espanhol
 - Templates parametrizados por tipo de ocorrência
 - Merge automático com dados de clube e liga para personalização
-- Integração com cadastros de ligas e idiomas (`data/clubes.csv`, `data/ligas.csv`)
+- Dados carregados do Supabase (`clubes`, `ligas`) com fallback para CSV
 
 ---
 
@@ -109,7 +118,7 @@ Cálculo e distribuição de ressarcimentos para vítimas de contas fraudulentas
 
 - Upload de CSV exportado do Snowflake com colunas específicas de mãos
 - Validação automática das colunas obrigatórias
-- Carregamento automático de fraudadores conhecidos do banco SQLite interno
+- Carregamento de fraudadores conhecidos do banco (Supabase ou SQLite fallback)
 - Gerenciamento de fraudadores: visualização, adição e remoção via interface
 - Cálculo do saldo líquido afetado por fraudador
 - Distribuição proporcional do ressarcimento entre as vítimas
@@ -125,25 +134,32 @@ Relatórios geográficos e de dispositivos com três abas integradas.
 
 **Aba Consulta Manual (IP/GPS):**
 - Consulta de endereços IP ou coordenadas GPS sem upload de arquivo
-- Entrada por texto livre (um item por linha)
-- Resultado exibido em tabela com mapa interativo Folium
 
 **Aba Importar Planilhas (IP/GPS):**
-- Upload de IP Report XLSX e/ou GPS Report XLSX (detecção automática do tipo)
+- Upload de IP Report XLSX e/ou GPS Report XLSX
 - Geolocalização de IPs via ip-api.com em lotes de até 100 por requisição
 - Geocodificação reversa de coordenadas GPS via OpenStreetMap Nominatim
-- Cache por sessão para evitar requisições duplicadas
-- Marcadores coloridos por conta (paleta de até 10 cores)
 - Mapa interativo Folium com camadas Ruas e Satélite
-- Resumo deduplificado e tabela completa expansível
-- Detecção de alertas: múltiplos países, IPs compartilhados, múltiplas cidades, dispositivos compartilhados
+- Detecção de alertas: múltiplos países, IPs/dispositivos compartilhados, múltiplas cidades
 - Exportação em PDF com tabelas de alertas e resumo geográfico
 
 **Aba Dispositivos:**
-- Upload de arquivos "Same Data With Players" exportados do backend (múltiplos arquivos)
+- Upload de arquivos "Same Data With Players" exportados do backend (múltiplos)
 - Censura automática dos identificadores de dispositivo (UUID parcial)
-- Detecção de contas que aparecem em mais de um arquivo investigado
-- Exportação em PDF landscape com tabelas por investigação e alertas cruzados
+- Detecção de contas que aparecem em mais de um arquivo
+- Exportação em PDF landscape com alertas cruzados
+
+---
+
+### 💵 Despesas Security — `pages/6_💵_Despesas.py`
+
+Controle de despesas operacionais do time de segurança.
+
+- Sincronização via upload do Excel de despesas (DELETE + INSERT, Excel é fonte de verdade)
+- Filtros interativos por período, clube, liga e categoria
+- Gráficos de evolução mensal e distribuição por categoria
+- Exportação em PDF do relatório financeiro
+- Status de conexão Supabase na sidebar
 
 ---
 
@@ -154,11 +170,40 @@ Visualizador de histórico de mãos exportado do backend, com filtros interativo
 - Upload do arquivo HTML exportado pelo backend (múltiplas mãos por arquivo)
 - Seleção de "minhas contas" para revelar cartas e destacar mãos relevantes
 - Modos de exibição de cartas: revelar minhas contas / revelar todos / ocultar todos
-- Filtro para exibir apenas mãos com as contas selecionadas
-- Métricas por mão: pote total, rake, número de jogadores e rodadas
 - Resultado acumulado por conta ao longo de todas as mãos exibidas
-- Colorização por resultado (verde/vermelho) na tabela de resultado final
 - Exportação em PDF com índice navegável clicável e links de volta ao índice
+
+---
+
+### 🔗 Pipefy — `pages/8_🔗_Pipefy.py`
+
+Dashboard de protocolos de segurança sincronizados do Pipefy.
+
+- Sincronização de cards via API Pipefy com barra de progresso
+- Persistência no Supabase (`pipefy_cards`, `pipefy_sync`) com fallback SQLite
+- Filtros por data, categoria, tipo de ocorrência, resultado e analista
+- Métricas: total de protocolos, positivos, internos vs. denúncias, média diária
+- Gráficos de resultado, tipo e categoria
+- Análise de produtividade por analista (regime 12/36)
+- Exportação em PDF do dashboard
+- Status de conexão Supabase na sidebar
+
+---
+
+### ⚙️ Banco de Dados — `pages/9_⚙️_Banco_de_Dados.py`
+
+Gerenciamento das tabelas de referência no Supabase.
+
+**Clubes:**
+- Upload da planilha de clubes exportada pelo sistema (aba Sheet1)
+- Filtragem automática pelas ligas cadastradas
+- Upsert no Supabase com contagem de inseridos e atualizados
+- Visualização com filtros por nome e liga
+
+**Ligas:**
+- Sincronização completa a partir do `ligas.csv` local
+- Adição e atualização manual de ligas via formulário (todos os campos)
+- Visualização da tabela completa
 
 ---
 
@@ -174,8 +219,18 @@ projeto_payjump/
 │   │   ├── 3_🔐_Gerador_de_Notificações.py
 │   │   ├── 4_💲_Ressarcimento.py
 │   │   ├── 5_📝_Relatórios.py
-│   │   └── 7_🃏_Hand_History.py
+│   │   ├── 6_💵_Despesas.py
+│   │   ├── 7_🃏_Hand_History.py
+│   │   ├── 8_🔗_Pipefy.py
+│   │   └── 9_⚙️_Banco_de_Dados.py
 │   ├── utils/
+│   │   ├── supabase_client.py             # Conexão centralizada Supabase
+│   │   ├── clubes_db.py                   # Persistência clubes (Supabase + CSV fallback)
+│   │   ├── ligas_db.py                    # Persistência ligas (Supabase + CSV fallback)
+│   │   ├── despesas_db.py                 # Persistência despesas (Supabase)
+│   │   ├── pipefy_db.py                   # Persistência Pipefy (Supabase + SQLite fallback)
+│   │   ├── ressarcimento_db.py            # Persistência ressarcimentos (Supabase + SQLite fallback)
+│   │   ├── database.py                    # SQLAlchemy + SQLite (backend do ressarcimento_db)
 │   │   ├── analise_backend.py             # Análise via XLSX do backend
 │   │   ├── analise_snowflake.py           # Análise via CSV do Snowflake
 │   │   ├── analise_geo.py                 # Análise geográfica e PDFs geo/dispositivos
@@ -185,12 +240,13 @@ projeto_payjump/
 │   │   ├── pdf_builder.py                 # Funções de construção de PDF (ReportLab)
 │   │   ├── pdf_config.py                  # Estilos, fontes e configurações de PDF
 │   │   ├── calculos.py                    # Lógica de cálculo de ressarcimento
-│   │   ├── database.py                    # SQLAlchemy + SQLite
 │   │   └── arquivo_utils.py               # Leitura/correção de XLSX malformados
 │   ├── data/
-│   │   ├── clubes.csv
-│   │   ├── ligas.csv
-│   │   └── ressarcimento.db               # Gerado automaticamente
+│   │   ├── clubes.csv                     # Fallback local de clubes
+│   │   ├── ligas.csv                      # Fallback local de ligas
+│   │   ├── pipefy.db                      # SQLite fallback do Pipefy
+│   │   ├── ressarcimento.db               # SQLite fallback de ressarcimentos
+│   │   └── supabase_setup.sql             # DDL completo de todas as tabelas
 │   └── requirements.txt
 ├── cli/
 │   └── src/
@@ -207,6 +263,22 @@ reverse_geocode/
 
 ---
 
+## 🗄️ Banco de Dados — Supabase
+
+Todas as tabelas são criadas pelo arquivo `data/supabase_setup.sql`.
+
+| Tabela | Módulo responsável | Fallback |
+|---|---|---|
+| `security_despesas` | `despesas_db.py` | — (obrigatório) |
+| `pipefy_cards` / `pipefy_sync` | `pipefy_db.py` | SQLite `pipefy.db` |
+| `clubes` | `clubes_db.py` | `clubes.csv` |
+| `ligas` | `ligas_db.py` | `ligas.csv` |
+| `fraudadores_identificados` | `ressarcimento_db.py` | SQLite `ressarcimento.db` |
+| `historico_ressarcimentos` | `ressarcimento_db.py` | SQLite `ressarcimento.db` |
+| `acumulados` | `ressarcimento_db.py` | SQLite `ressarcimento.db` |
+
+---
+
 ## 📊 Fontes de Dados
 
 | Fonte | Formato | Usado em |
@@ -218,8 +290,9 @@ reverse_geocode/
 | Backend — Same Data With Players | XLSX | Relatórios (aba Dispositivos) |
 | Backend — Hand History | HTML | Hand History Viewer |
 | Snowflake — mãos por conta | CSV | Análises (aba Snowflake), Ressarcimento |
-| `data/clubes.csv` | CSV estático | Análises, Payjump |
-| `data/ligas.csv` | CSV estático | Análises (Snowflake) |
+| Excel de despesas | XLSX | Despesas Security |
+| API Pipefy | REST | Pipefy |
+| Supabase | REST (PostgREST) | Todas as páginas |
 
 ---
 
@@ -229,6 +302,8 @@ reverse_geocode/
 |---|---|
 | ip-api.com/batch | Geolocalização de IPs em lote (até 100 por requisição) |
 | OpenStreetMap Nominatim | Geocodificação reversa de coordenadas GPS |
+| Pipefy GraphQL API | Busca e sincronização de cards de segurança |
+| Supabase REST (PostgREST) | Persistência centralizada de dados |
 
 ---
 
@@ -236,13 +311,14 @@ reverse_geocode/
 
 - **Python 3.x**
 - **Streamlit** — interface web
+- **Supabase** — banco de dados principal (PostgreSQL via REST)
 - **Pandas** — processamento de dados
 - **ReportLab** — geração de PDFs
 - **Folium / streamlit-folium** — mapas interativos
 - **staticmap** — mapas estáticos para PDF
 - **BeautifulSoup4** — parsing de HTML do hand history
 - **OpenPyXL** — manipulação de Excel
-- **SQLAlchemy + SQLite** — banco de dados de ressarcimentos
+- **SQLAlchemy + SQLite** — fallback local para Pipefy e Ressarcimento
 - **Requests** — integração com APIs externas
 
 ---
@@ -252,7 +328,7 @@ reverse_geocode/
 - Todos os cálculos são auditáveis e transparentes
 - Dados permanecem sob controle do usuário (sem envio para servidores externos, exceto IPs para ip-api.com)
 - Identificadores de dispositivo são automaticamente censurados nos relatórios
-- Banco SQLite local para persistência de fraudadores e histórico de ressarcimentos
+- Credenciais Supabase armazenadas em `.streamlit/secrets.toml` (não versionado)
 
 ---
 

@@ -52,11 +52,64 @@ Segue o padrão multi-página do Streamlit. O `início.py` é a homepage; as pá
 |---|---|
 | `início.py` | Homepage com descrição das ferramentas disponíveis |
 | `pages/1_📈_Análises.py` | Detecção de conluio — cruzamento de mãos, dispositivos, IPs e geolocalização. Exporta PDF com marca d'água. Suporta fontes Backend (XLSX) e Snowflake (CSV). |
-| `pages/2_📊_Payjump.py` | Calculadora de ressarcimentos em torneios com reentrada. Upload XLSX + merge com configs de clubes e ligas. Gera strings formatadas para inserção no sistema. |
+| `pages/2_📊_Payjump.py` | Calculadora de ressarcimentos em torneios com reentrada. Upload XLSX + merge com cadastro de clubes (Supabase). Gera strings formatadas para inserção no sistema. |
 | `pages/3_🔐_Gerador_de_Notificações.py` | *(Em desenvolvimento)* Geração de notificações multilíngues (PT/EN/ES) para jogadores afetados por ações de segurança. |
-| `pages/4_💲_Ressarcimento.py` | Cálculo de ressarcimentos por bots/fraudadores — upload CSV Snowflake, banco SQLite de fraudadores, distribuição proporcional, exportação Excel. |
+| `pages/4_💲_Ressarcimento.py` | Cálculo de ressarcimentos por bots/fraudadores — upload CSV Snowflake, banco de fraudadores (Supabase ou SQLite fallback), distribuição proporcional, exportação Excel. |
 | `pages/5_📝_Relatórios.py` | Relatórios geográficos e de dispositivos — três abas: Consulta Manual (IP/GPS sem upload), Importar Planilhas (IP/GPS com mapa Folium, alertas e PDF), Dispositivos (análise "Same Data With Players" com alertas cruzados e PDF). |
+| `pages/6_💵_Despesas.py` | Controle de despesas operacionais do time de segurança. Sincronização via Excel com Supabase (`security_despesas`). Filtros, gráficos e exportação PDF. |
 | `pages/7_🃏_Hand_History.py` | Visualizador de hand history — parser do HTML exportado pelo backend, filtros por conta e modo de cartas, resultado acumulado por conta, exportação em PDF com índice navegável. |
+| `pages/8_🔗_Pipefy.py` | Dashboard de protocolos de segurança do Pipefy. Sincronização via API, persistência Supabase com fallback SQLite, filtros, gráficos, análise de produtividade e exportação PDF. |
+| `pages/9_⚙️_Banco_de_Dados.py` | Gerenciamento das tabelas de referência no Supabase: clubes (upload da planilha do sistema) e ligas (sincronização via CSV + adição manual). Layout em duas colunas. |
+
+---
+
+### Camada Supabase — `utils/supabase_client.py`
+
+Ponto único de configuração e acesso ao Supabase. Todos os módulos de persistência importam daqui:
+
+- `usar_supabase()` → bool — detecta se `SUPABASE_URL` e `SUPABASE_KEY` estão em `st.secrets`
+- `criar_cliente()` — factory do cliente Supabase via REST/HTTPS
+- `paginar(cliente, tabela, colunas)` — lê todos os registros paginando de `TAMANHO_LOTE` em `TAMANHO_LOTE` (500)
+- `exibir_status_conexao()` — renderiza `st.success` / `st.error` com o status da conexão (usado nas sidebars)
+- `TAMANHO_LOTE = 500` — constante compartilhada por todos os módulos de persistência
+
+**Credenciais:** `.streamlit/secrets.toml` com `SUPABASE_URL` e `SUPABASE_KEY`.
+
+**DDL completo:** `data/supabase_setup.sql` — executar uma vez no SQL Editor do Supabase.
+
+---
+
+### Módulos de persistência — `utils/`
+
+Todos seguem o padrão: Supabase quando configurado, fallback automático caso contrário.
+
+#### `utils/clubes_db.py`
+- `carregar_clubes()` → DataFrame — Supabase ou `data/clubes.csv`
+- `sincronizar_clubes(df)` → `(inseridos, atualizados)` — upsert por `clube_id`
+
+#### `utils/ligas_db.py`
+- `carregar_ligas()` → DataFrame — Supabase ou `data/ligas.csv` (fallback silencioso em caso de erro)
+- `sincronizar_ligas_csv()` → `(inseridas, atualizadas)` — lê `ligas.csv` e faz upsert no Supabase
+- `inserir_liga(liga_id, liga_nome, ...)` — upsert de uma liga individual
+
+#### `utils/despesas_db.py`
+- `carregar_despesas()` → DataFrame — Supabase obrigatório (sem fallback)
+- `sincronizar_excel(df_excel)` → `(removidos, inseridos)` — DELETE completo + INSERT (Excel é fonte de verdade)
+
+#### `utils/pipefy_db.py`
+- `carregar_cards()` → DataFrame — Supabase ou SQLite `pipefy.db`
+- `sincronizar_cards(df)` → `(inseridos, atualizados)` — upsert por `id`
+- `obter_ultima_sincronizacao()` / `registrar_sincronizacao()` — controle de timestamp
+
+#### `utils/ressarcimento_db.py`
+- Mesma API pública de `utils/database.py` (drop-in replacement) — Supabase ou SQLite `ressarcimento.db`
+- Funções: `get_ids_fraudadores`, `get_fraudadores_completo`, `adicionar_fraudadores_lote`, `salvar_ressarcimentos_lote`, `get_historico_completo`, `get_estatisticas_historico`, `get_acumulados`, `atualizar_acumulados`, `limpar_acumulados`, `get_estatisticas_acumulados`
+
+#### `utils/database.py`
+- Backend SQLite puro do ressarcimento. Usado como fallback pelo `ressarcimento_db.py`.
+- Banco: `data/ressarcimento.db` — criado automaticamente ao importar o módulo via `inicializar_banco()`
+- Tabelas: `fraudadores_identificados`, `historico_ressarcimentos`, `acumulados`
+- **Não importar diretamente nas páginas** — usar `ressarcimento_db.py`
 
 ---
 
@@ -136,12 +189,6 @@ Parser de HTML de hand history e geração de PDF — sem código Streamlit (tes
 - `_fmt_br(valor, decimais, sinal)` — formata número no padrão brasileiro
 - `gerar_pdf_hand_history(maos, contas_selecionadas, modo_cartas, game_id)` → `bytes` — PDF com índice navegável clicável, seções por mão (ações + resultado), links internos
 
-#### `utils/database.py`
-Camada de persistência (SQLAlchemy + SQLite):
-- Banco: `data/ressarcimento.db` — criado automaticamente ao importar o módulo via `inicializar_banco()`
-- Tabelas: `fraudadores_identificados`, `historico_ressarcimentos`, `acumulados`
-- Nunca criar tabelas manualmente — o banco é gerenciado pelo módulo
-
 #### `utils/calculos.py`
 Lógica de negócio para cálculo de ressarcimentos:
 - Cálculo de saldo líquido por jogador vitimado
@@ -157,10 +204,11 @@ Correção e leitura de arquivos XLSX malformados do backend:
 
 ### Dados estáticos — `data/`
 
-Atualização manual:
-- `data/clubes.csv` — colunas: `clube_id`, `clube_nome`, `liga_id`, `liga_nome`
-- `data/ligas.csv` — colunas: `liga_id`, `nome-liga`, `idioma`, `handicap`, `moeda`, `taxa-liga`
-- `data/ressarcimento.db` — SQLite, gerado automaticamente
+- `data/clubes.csv` — fallback local de clubes (colunas: `clube_id`, `clube_nome`, `liga_id`, `liga_nome`)
+- `data/ligas.csv` — fallback local de ligas (colunas: `liga_id`, `liga_nome`, `idioma`, `handicap`, `moeda`, `taxa-liga`)
+- `data/pipefy.db` — SQLite fallback do Pipefy (gerado automaticamente)
+- `data/ressarcimento.db` — SQLite fallback de ressarcimentos (gerado automaticamente)
+- `data/supabase_setup.sql` — DDL completo de todas as tabelas do Supabase
 
 ---
 
@@ -171,7 +219,7 @@ Módulos separados por responsabilidade:
 - `processamento.py` — cálculos de premiação, KOs, payjump
 - `io_utils.py` — helpers de entrada/saída
 - `payjump.py` — orquestrador principal
-- `atualiza_clubes.py` — sincronização do cadastro de clubes
+- `atualiza_clubes.py` — sincronização do cadastro de clubes (atualiza CSV local; a versão web usa `clubes_db.py`)
 - `gerar_ligas.py` — gerador de ligas
 
 ---
@@ -216,15 +264,38 @@ Hand History HTML (backend)
 ### Payjump (página 2)
 ```
 XLSX torneio → Correção de arquivo → Extração de jogadores/ranks/prêmios
-    → Merge com clubes.csv → Distribuição proporcional de KOs → Cálculo payjump
+    → carregar_clubes() [Supabase ou CSV] → Distribuição proporcional de KOs → Cálculo payjump
     → Strings formatadas para sistema
 ```
 
 ### Ressarcimento (página 4)
 ```
-CSV Snowflake → Identificação de fraudadores (SQLite) → Cálculo de saldo líquido por jogador
-    → Distribuição proporcional dos fundos retidos → Separação: imediatos / acumulados / futuros
+CSV Snowflake → Identificação de fraudadores (ressarcimento_db → Supabase ou SQLite)
+    → Cálculo de saldo líquido por jogador
+    → Distribuição proporcional dos fundos retidos
+    → Separação: imediatos / acumulados / futuros
     → Exportação Excel (múltiplas abas)
+```
+
+### Despesas (página 6)
+```
+Excel de despesas → sincronizar_excel() → DELETE + INSERT no Supabase (security_despesas)
+    → carregar_despesas() → Filtros + gráficos na UI → gerar_pdf_relatorio_financeiro()
+```
+
+### Pipefy (página 8)
+```
+API Pipefy → buscar_todos_os_cards() → sincronizar_cards() [Supabase ou SQLite]
+    → registrar_sincronizacao() → Filtros + métricas + gráficos → gerar_pdf_dashboard()
+```
+
+### Banco de Dados (página 9)
+```
+Planilha de clubes (XLSX) → corrigir_xlsx_memoria() → filtrar por carregar_ligas()
+    → sincronizar_clubes() [upsert Supabase]
+
+ligas.csv → sincronizar_ligas_csv() [upsert Supabase]
+Formulário manual → inserir_liga() [upsert Supabase]
 ```
 
 ---
@@ -236,13 +307,17 @@ CSV Snowflake → Identificação de fraudadores (SQLite) → Cálculo de saldo 
 | **ip-api.com** (`/batch`) | Geolocalização de IPs em lotes de até 100 | `URL_IP_API`, `TIMEOUT_IP_API = 15`, `LOTE_IP_API = 100` |
 | **OpenStreetMap Nominatim** (`/reverse`) | Geocodificação reversa de coordenadas GPS | `URL_NOMINATIM`, `TIMEOUT_NOMINATIM = 10`, `DELAY_NOMINATIM = 1` (rate limiting) |
 | **Snowflake** | Acesso apenas via export CSV (sem conexão direta) | — |
+| **Pipefy GraphQL** | Busca de cards de segurança | Token em `st.secrets['PIPEFY_TOKEN']` |
+| **Supabase REST** | Persistência centralizada | `SUPABASE_URL`, `SUPABASE_KEY` em `st.secrets` |
 
 ---
 
 ## Convenções importantes
 
 - **Homepage**: o arquivo de entrada do Streamlit é `início.py` (não `app.py`)
-- **Banco SQLite**: inicializado automaticamente ao importar `utils/database.py`. Não criar tabelas manualmente.
+- **Supabase**: toda conexão passa por `utils/supabase_client.py`. Nunca criar clientes Supabase diretamente nas páginas ou em outros utilitários.
+- **Clubes e Ligas**: usar sempre `carregar_clubes()` / `carregar_ligas()` — nunca `pd.read_csv` direto nas páginas. Ambas têm fallback automático para CSV.
+- **Ressarcimento**: importar de `utils/ressarcimento_db.py`, não de `utils/database.py`. O `database.py` é o backend SQLite e não deve ser importado diretamente pelas páginas.
 - **XLSX malformados**: arquivos do backend frequentemente estão com `styles.xml` corrompido. Sempre usar `arquivo_utils.py` para leitura.
 - **Caminhos hardcoded**: sem `.env`. Ajustes de ambiente devem ser feitos diretamente nos arquivos.
 - **Multiplicador de moeda**: ganhos e rake do Snowflake são multiplicados por `MULTIPLICADOR_MOEDA = 5` (conversão de chips para R$).
@@ -253,4 +328,5 @@ CSV Snowflake → Identificação de fraudadores (SQLite) → Cálculo de saldo 
 - **Cache de geolocalização**: `cache_ips` e `cache_geo` são dicts mantidos no `st.session_state` para evitar requisições duplicadas entre interações do usuário.
 - **`utils/hand_history_parser.py`**: módulo sem Streamlit — contém todo o parsing do HTML e a geração de PDF do Hand History. A página `7_🃏_Hand_History.py` importa deste módulo e contém apenas a camada de UI.
 - **`utils/mapa_utils.py`**: centraliza a lógica do mapa Folium interativo. Importar e usar `exibir_mapa_folium(df, key)` em vez de duplicar código de mapa entre páginas.
+- **`TAMANHO_LOTE`**: constante definida em `supabase_client.py`. Todos os módulos de persistência importam daqui — nunca redefinir localmente.
 - O projeto é de uso interno (licença proprietária). Dados sensíveis não devem sair dos sistemas internos.
